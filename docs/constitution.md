@@ -70,9 +70,9 @@ Retries must not duplicate searchable slides. Reprocessing and deletion must kee
 
 ## First-release scope
 
-Include upload, visible indexing status, text and visual search, slide previews, source attribution, original-deck download, and deck deletion.
+Include upload, visible indexing status, text and visual search, slide previews, source attribution, original-deck download, slide-image and individual-graphic downloads, and deck deletion.
 
-Defer slide editing, automatic presentation generation, selected-slide export, individual-graphic export, per-deck permissions, legacy `.ppt` support, and automatic folder synchronization. Add them only through an explicit scope decision.
+Defer slide editing, automatic presentation generation, selected-slide export as editable presentations, per-deck permissions, legacy `.ppt` support, and automatic folder synchronization. Add them only through an explicit scope decision.
 
 Core controls must support keyboard use, accessible labels, and readable status and error messages.
 
@@ -91,5 +91,7 @@ Exercise failed processing and retry behavior. Verify that local configuration s
 Feature plans reference this constitution and identify any conflicting requirements before implementation. Prefer the smallest complete change that satisfies the user workflow and preserves data protection.
 
 Changes to product scope, cloud data handling, shared-library access, or deployment constraints require the project owner's explicit decision. Record an accepted exception here with its reason and date. Implementation choices within these rules do not require a constitution amendment.
+
+On 2026-11-01, the project owner included user-facing slide-image and individual-graphic downloads, including original embedded pictures and rendered graphics, to support reuse outside the search pipeline. Close visual similarity is acceptable. Clearly labelled slide crops with warnings are an accepted fallback when isolated graphic export is unavailable. This does not add editable selected-slide export. See the [PowerPoint extraction plan](plans/powerpoint-extraction.md) for implementation details.
 
 Keep this document focused on durable project rules. Put feature tasks, selected dependencies, commands, and measured results in their respective plans and implementation documentation.
