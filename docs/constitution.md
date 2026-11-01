@@ -1,6 +1,6 @@
 # PowerPoint searcher constitution
 
-Status: Updated with the project owner's architecture and language decisions on 2026-11-01.
+Status: Updated with the project owner's Python package management decision on 2026-11-02.
 
 ## Purpose and users
 
@@ -27,6 +27,8 @@ Each result shows a slide preview, the source filename, and the slide number. Us
 ## Architecture and module boundaries
 
 Keep each application module in its own folder within this repository. The frontend uses TypeScript. Backend services use Python. PowerPoint extraction is a separate backend module with its own folder.
+
+Use `uv` to manage Python packages and virtual environments for all backend services.
 
 Backend modules are independently startable services by default, including during local development. Define modules around cohesive responsibilities, not individual functions or classes. Each service owns its implementation, dependencies, configuration, tests, and API contract.
 

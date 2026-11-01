@@ -29,6 +29,8 @@ Plan retries, reprocessing, and deletion across all affected services. Prevent d
 
 Use TypeScript for frontend code and Python for backend services. Enable strict TypeScript checking. Add Python type annotations to service interfaces and new or changed function signatures. Validate external data at runtime rather than treating type annotations as validation.
 
+Use `uv` to manage Python packages and virtual environments. Keep each service's dependency files in its own folder and use `uv` in its setup and verification instructions.
+
 Use descriptive names and the smallest complete implementation. Reuse existing module patterns and installed dependencies before introducing new abstractions or packages. Keep business logic separate from HTTP handlers and external integrations. Comment only when the reason for a choice is not clear from the code.
 
 Before changing behavior, inspect callers, API clients, tests, fixtures, configuration, and deployment instructions. Update every affected part in the same change. Keep secrets out of source control, API responses, and logs.
