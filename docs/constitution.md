@@ -1,6 +1,6 @@
 # PowerPoint searcher constitution
 
-Status: Initial constitution based on the project owner's decisions on 2026-11-01.
+Status: Updated with the project owner's architecture and language decisions on 2026-11-01.
 
 ## Purpose and users
 
@@ -23,6 +23,22 @@ Processing status distinguishes queued, processing, ready, and failed uploads. A
 Users enter a natural-language query and receive relevant slide results based on text and visual meaning. For example, "a circular process diagram" can match a slide even when those words do not appear on it.
 
 Each result shows a slide preview, the source filename, and the slide number. Users download the original deck to reuse editable content in PowerPoint. The application does not promise that every graphic in an uploaded deck is editable.
+
+## Architecture and module boundaries
+
+Keep each application module in its own folder within this repository. The frontend uses TypeScript. Backend services use Python. PowerPoint extraction is a separate backend module with its own folder.
+
+Backend modules are independently startable services by default, including during local development. Define modules around cohesive responsibilities, not individual functions or classes. Each service owns its implementation, dependencies, configuration, tests, and API contract.
+
+REST over HTTP is the default communication mechanism between application modules. The frontend accesses backend capabilities through HTTP APIs. Services must not import another service's implementation or use its database tables or private files as an integration interface.
+
+Each service owns the data it manages. Services may share a local database server, but ownership of tables and migrations must remain explicit. Access another service's data through its API. Document how original files and derived content move between services without exposing private storage paths.
+
+Long-running indexing uses jobs with identifiers and observable status. An HTTP request must not stay open for the entire indexing pipeline. Service boundaries must preserve retry safety and the deck-deletion guarantees in this constitution. Deletion must also prevent in-flight processing from restoring deleted content.
+
+The complete system must run on one local machine. Separate services must not introduce a mandatory cloud service or require all models to remain loaded concurrently. External model integrations retain the OpenAI-compatible API requirements below.
+
+Document any exception to the service boundary or REST default, with its reason, in the relevant architecture or feature plan before implementation. Changes to the mandated languages or independently startable service default require the project owner's explicit decision.
 
 ## Deployment and model access
 
