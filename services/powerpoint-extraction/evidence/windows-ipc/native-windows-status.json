@@ -1,0 +1,14 @@
+{
+  "platform": "Windows-11-10.0.26200-SP0",
+  "native_windows_supported": false,
+  "pipe_creation_winerrors": {
+    "OSL_PIPE_": 5,
+    "LOCAL\\": 0
+  },
+  "uno_startup_error": "Traceback (most recent call last):\n  File \"<string>\", line 3, in <module>\n    try: runpy.run_path('worker.py',run_name='__main__')\n         ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<frozen runpy>\", line 294, in run_path\n  File \"<frozen runpy>\", line 98, in _run_module_code\n  File \"<frozen runpy>\", line 88, in _run_code\n  File \"worker.py\", line 207, in <module>\n    main()\n    ~~~~^^\n  File \"worker.py\", line 69, in main\n    raise RuntimeError(\n        \"LibreOffice private pipe did not become available\"\n    ) from None\nRuntimeError: LibreOffice private pipe did not become available\n",
+  "in_process_desktop_exit_code": 3221225477,
+  "actual_conversion_succeeded": false,
+  "network_capabilities": [],
+  "loopback_exemptions_added": false,
+  "supported_deployment": "Linux service, including under WSL"
+}

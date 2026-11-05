@@ -1,0 +1,995 @@
+{
+  "inventory": {
+    "schema_version": 1,
+    "original_sha256": "23b59f0c692d8a058d869abb1fdfff70e3d2625969bcd858afce9bd91ae9748f",
+    "slides": [
+      {
+        "number": 1,
+        "source_slide_id": 256,
+        "hidden": false,
+        "width": 9144000,
+        "height": 6858000,
+        "occurrences": [
+          {
+            "id": "slide-256:/ppt/slideMasters/slideMaster1.xml:13",
+            "slide": 1,
+            "source_part": "/ppt/slideMasters/slideMaster1.xml",
+            "source_shape_id": 13,
+            "source_name": "inherited-master-mark",
+            "renderer_name": "ps_1b75ce0d2f72afcd04c6aed4",
+            "parent_id": null,
+            "kind": "shape",
+            "inherited": true,
+            "source_scope": "master",
+            "text": "Inherited master",
+            "transform": [
+              1.0,
+              0.0,
+              0.0,
+              1.0,
+              6675120.0,
+              6126480.0
+            ],
+            "bounds": [
+              6675120.0,
+              6126480.0,
+              8686800.0,
+              6492240.0
+            ],
+            "source_size": [
+              2011680,
+              365760
+            ],
+            "local_geometry": [
+              6675120,
+              6126480,
+              2011680,
+              365760
+            ],
+            "group_path": [],
+            "stacking_order": 5,
+            "alt_text": "",
+            "paragraphs": [
+              "Inherited master"
+            ],
+            "text_blocks": [
+              {
+                "text": "Inherited master",
+                "paragraphs": [
+                  "Inherited master"
+                ],
+                "source_kind": "shape",
+                "cell_row": null,
+                "cell_column": null,
+                "reading_order": null
+              }
+            ],
+            "crop": null,
+            "asset_id": null,
+            "warning": null
+          },
+          {
+            "id": "slide-256:/ppt/slides/slide1.xml:2",
+            "slide": 1,
+            "source_part": "/ppt/slides/slide1.xml",
+            "source_shape_id": 2,
+            "source_name": "ordinary-text",
+            "renderer_name": "ps_a726f087534ee9611bc3b25c",
+            "parent_id": null,
+            "kind": "shape",
+            "inherited": false,
+            "source_scope": "slide",
+            "text": "Source inventory proof\nSecond paragraph",
+            "transform": [
+              1.0,
+              0.0,
+              0.0,
+              1.0,
+              274320.0,
+              182880.0
+            ],
+            "bounds": [
+              274320.0,
+              182880.0,
+              4846320.0,
+              914400.0
+            ],
+            "source_size": [
+              4572000,
+              731520
+            ],
+            "local_geometry": [
+              274320,
+              182880,
+              4572000,
+              731520
+            ],
+            "group_path": [],
+            "stacking_order": 0,
+            "alt_text": "",
+            "paragraphs": [
+              "Source inventory proof",
+              "Second paragraph"
+            ],
+            "text_blocks": [
+              {
+                "text": "Source inventory proof\nSecond paragraph",
+                "paragraphs": [
+                  "Source inventory proof",
+                  "Second paragraph"
+                ],
+                "source_kind": "shape",
+                "cell_row": null,
+                "cell_column": null,
+                "reading_order": null
+              }
+            ],
+            "crop": null,
+            "asset_id": null,
+            "warning": null
+          },
+          {
+            "id": "slide-256:/ppt/slides/slide1.xml:3",
+            "slide": 1,
+            "source_part": "/ppt/slides/slide1.xml",
+            "source_shape_id": 3,
+            "source_name": "cropped-alpha-picture",
+            "renderer_name": "ps_22ed9c91b2007b859ed3eca7",
+            "parent_id": null,
+            "kind": "picture",
+            "inherited": false,
+            "source_scope": "slide",
+            "text": "",
+            "transform": [
+              0.9135454576426009,
+              0.4067366430758002,
+              -0.4067366430758002,
+              0.9135454576426009,
+              815194.0233529895,
+              876090.5387201926
+            ],
+            "bounds": [
+              257314.0437102219,
+              876090.5387201926,
+              2485885.956289778,
+              2872949.4612798076
+            ],
+            "source_size": [
+              1828800,
+              1371600
+            ],
+            "local_geometry": [
+              457200,
+              1188720,
+              1828800,
+              1371600
+            ],
+            "group_path": [],
+            "stacking_order": 1,
+            "alt_text": "image.png",
+            "paragraphs": [],
+            "text_blocks": [],
+            "crop": [
+              0.12,
+              0.0,
+              0.18,
+              0.0
+            ],
+            "asset_id": "a96a6e67a2a8f7a55fc0f3184771e271477b73762d331b8b08889f672028e9b1",
+            "warning": null
+          },
+          {
+            "id": "slide-256:/ppt/slides/slide1.xml:4",
+            "slide": 1,
+            "source_part": "/ppt/slides/slide1.xml",
+            "source_shape_id": 4,
+            "source_name": "repeated-picture",
+            "renderer_name": "ps_81056488ce01fd73d6d3a461",
+            "parent_id": null,
+            "kind": "picture",
+            "inherited": false,
+            "source_scope": "slide",
+            "text": "",
+            "transform": [
+              1.0,
+              0.0,
+              0.0,
+              1.0,
+              2743200.0,
+              1188720.0
+            ],
+            "bounds": [
+              2743200.0,
+              1188720.0,
+              4572000.0,
+              2560320.0
+            ],
+            "source_size": [
+              1828800,
+              1371600
+            ],
+            "local_geometry": [
+              2743200,
+              1188720,
+              1828800,
+              1371600
+            ],
+            "group_path": [],
+            "stacking_order": 2,
+            "alt_text": "image.png",
+            "paragraphs": [],
+            "text_blocks": [],
+            "crop": [
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "asset_id": "a96a6e67a2a8f7a55fc0f3184771e271477b73762d331b8b08889f672028e9b1",
+            "warning": null
+          },
+          {
+            "id": "slide-256:/ppt/slides/slide1.xml:5",
+            "slide": 1,
+            "source_part": "/ppt/slides/slide1.xml",
+            "source_shape_id": 5,
+            "source_name": "outer-group",
+            "renderer_name": "ps_62e4694820dc7cbcfae4d7e1",
+            "parent_id": null,
+            "kind": "group",
+            "inherited": false,
+            "source_scope": "slide",
+            "text": "",
+            "transform": [
+              0.992546151641322,
+              0.12186934340514748,
+              -0.12186934340514748,
+              0.992546151641322,
+              5124312.890824781,
+              1082961.981100792
+            ],
+            "bounds": [
+              4958828.459324425,
+              1082961.981100792,
+              8418843.540675575,
+              2835242.018899208
+            ],
+            "source_size": [
+              3319272,
+              1357884
+            ],
+            "local_geometry": [
+              5029200,
+              1280160,
+              3319272,
+              1357884
+            ],
+            "group_path": [],
+            "stacking_order": 3,
+            "alt_text": "",
+            "paragraphs": [],
+            "text_blocks": [],
+            "crop": null,
+            "asset_id": null,
+            "warning": null
+          },
+          {
+            "id": "slide-256:/ppt/slides/slide1.xml:6",
+            "slide": 1,
+            "source_part": "/ppt/slides/slide1.xml",
+            "source_shape_id": 6,
+            "source_name": "outer-child",
+            "renderer_name": "ps_bf058b24f5712db52c66d961",
+            "parent_id": "slide-256:/ppt/slides/slide1.xml:5",
+            "kind": "shape",
+            "inherited": false,
+            "source_scope": "slide",
+            "text": "Group parent",
+            "transform": [
+              1.0918007668054543,
+              0.13405627774566223,
+              -0.10968240906463272,
+              0.8932915364771898,
+              5124312.890824781,
+              1082961.981100792
+            ],
+            "bounds": [
+              5054107.374430691,
+              1082961.981100792,
+              7120998.133158596,
+              1899902.1485103788
+            ],
+            "source_size": [
+              1828800,
+              640080
+            ],
+            "local_geometry": [
+              5029200,
+              1280160,
+              1828800,
+              640080
+            ],
+            "group_path": [
+              "slide-256:/ppt/slides/slide1.xml:5"
+            ],
+            "stacking_order": 0,
+            "alt_text": "",
+            "paragraphs": [
+              "Group parent"
+            ],
+            "text_blocks": [
+              {
+                "text": "Group parent",
+                "paragraphs": [
+                  "Group parent"
+                ],
+                "source_kind": "shape",
+                "cell_row": null,
+                "cell_column": null,
+                "reading_order": null
+              }
+            ],
+            "crop": null,
+            "asset_id": null,
+            "warning": null
+          },
+          {
+            "id": "slide-256:/ppt/slides/slide1.xml:7",
+            "slide": 1,
+            "source_part": "/ppt/slides/slide1.xml",
+            "source_shape_id": 7,
+            "source_name": "nested-group",
+            "renderer_name": "ps_2bbf696738310de4ee943849",
+            "parent_id": "slide-256:/ppt/slides/slide1.xml:5",
+            "kind": "group",
+            "inherited": false,
+            "source_scope": "slide",
+            "text": "",
+            "transform": [
+              1.0391448103227359,
+              0.3315672969989034,
+              -0.3524729896524341,
+              0.8402404312490811,
+              5489027.241806276,
+              1602164.6120462231
+            ],
+            "bounds": [
+              5247301.265502637,
+              1602164.6120462231,
+              8339609.285483605,
+              3087956.908924235
+            ],
+            "source_size": [
+              2743200,
+              685800
+            ],
+            "local_geometry": [
+              5303520,
+              2103120,
+              2743200,
+              685800
+            ],
+            "group_path": [
+              "slide-256:/ppt/slides/slide1.xml:5"
+            ],
+            "stacking_order": 1,
+            "alt_text": "",
+            "paragraphs": [],
+            "text_blocks": [],
+            "crop": null,
+            "asset_id": null,
+            "warning": null
+          },
+          {
+            "id": "slide-256:/ppt/slides/slide1.xml:8",
+            "slide": 1,
+            "source_part": "/ppt/slides/slide1.xml",
+            "source_shape_id": 8,
+            "source_name": "nested-child",
+            "renderer_name": "ps_4c3fd20d1c7e5df009ebbe2c",
+            "parent_id": "slide-256:/ppt/slides/slide1.xml:7",
+            "kind": "shape",
+            "inherited": false,
+            "source_scope": "slide",
+            "text": "Nested child",
+            "transform": [
+              1.0391448103227359,
+              0.3315672969989034,
+              -0.3524729896524341,
+              0.8402404312490811,
+              5489027.241806277,
+              1602164.6120462231
+            ],
+            "bounds": [
+              5295646.460763366,
+              1602164.6120462231,
+              7199376.468012675,
+              2608887.367723154
+            ],
+            "source_size": [
+              1645920,
+              548640
+            ],
+            "local_geometry": [
+              5303520,
+              2103120,
+              1645920,
+              548640
+            ],
+            "group_path": [
+              "slide-256:/ppt/slides/slide1.xml:5",
+              "slide-256:/ppt/slides/slide1.xml:7"
+            ],
+            "stacking_order": 0,
+            "alt_text": "",
+            "paragraphs": [
+              "Nested child"
+            ],
+            "text_blocks": [
+              {
+                "text": "Nested child",
+                "paragraphs": [
+                  "Nested child"
+                ],
+                "source_kind": "shape",
+                "cell_row": null,
+                "cell_column": null,
+                "reading_order": null
+              }
+            ],
+            "crop": null,
+            "asset_id": null,
+            "warning": null
+          },
+          {
+            "id": "slide-256:/ppt/slides/slide1.xml:9",
+            "slide": 1,
+            "source_part": "/ppt/slides/slide1.xml",
+            "source_shape_id": 9,
+            "source_name": "nested-picture",
+            "renderer_name": "ps_9f7d983af1471aae653a4008",
+            "parent_id": "slide-256:/ppt/slides/slide1.xml:7",
+            "kind": "picture",
+            "inherited": false,
+            "source_scope": "slide",
+            "text": "",
+            "transform": [
+              1.0391448103227359,
+              0.3315672969989034,
+              -0.3524729896524341,
+              0.8402404312490811,
+              7389415.270924496,
+              2208534.8847978176
+            ],
+            "bounds": [
+              7147689.294620858,
+              2208534.8847978176,
+              8339609.285483606,
+              3087956.9089242346
+            ],
+            "source_size": [
+              914400,
+              685800
+            ],
+            "local_geometry": [
+              7132320,
+              2103120,
+              914400,
+              685800
+            ],
+            "group_path": [
+              "slide-256:/ppt/slides/slide1.xml:5",
+              "slide-256:/ppt/slides/slide1.xml:7"
+            ],
+            "stacking_order": 1,
+            "alt_text": "image.png",
+            "paragraphs": [],
+            "text_blocks": [],
+            "crop": [
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "asset_id": "a96a6e67a2a8f7a55fc0f3184771e271477b73762d331b8b08889f672028e9b1",
+            "warning": null
+          },
+          {
+            "id": "slide-256:/ppt/slides/slide1.xml:10",
+            "slide": 1,
+            "source_part": "/ppt/slides/slide1.xml",
+            "source_shape_id": 10,
+            "source_name": "connector",
+            "renderer_name": "ps_ce4e335b18a2ea72e649b3b4",
+            "parent_id": null,
+            "kind": "connector",
+            "inherited": false,
+            "source_scope": "slide",
+            "text": "",
+            "transform": [
+              1.0,
+              0.0,
+              0.0,
+              1.0,
+              5029200.0,
+              3108960.0
+            ],
+            "bounds": [
+              5029200.0,
+              3108960.0,
+              7955279.0,
+              3108960.0
+            ],
+            "source_size": [
+              2926079,
+              0
+            ],
+            "local_geometry": [
+              5029200,
+              3108960,
+              2926079,
+              0
+            ],
+            "group_path": [],
+            "stacking_order": 4,
+            "alt_text": "",
+            "paragraphs": [],
+            "text_blocks": [],
+            "crop": null,
+            "asset_id": null,
+            "warning": null
+          },
+          {
+            "id": "slide-256:/ppt/slides/slide1.xml:11",
+            "slide": 1,
+            "source_part": "/ppt/slides/slide1.xml",
+            "source_shape_id": 11,
+            "source_name": "Table 10",
+            "renderer_name": "ps_c8a31ec20faffc2b278685dc",
+            "parent_id": null,
+            "kind": "table",
+            "inherited": false,
+            "source_scope": "slide",
+            "text": "Region\nValue\nNorth\n42",
+            "transform": [
+              1.0,
+              0.0,
+              0.0,
+              1.0,
+              457200.0,
+              3108960.0
+            ],
+            "bounds": [
+              457200.0,
+              3108960.0,
+              3200400.0,
+              4023360.0
+            ],
+            "source_size": [
+              2743200,
+              914400
+            ],
+            "local_geometry": [
+              457200,
+              3108960,
+              2743200,
+              914400
+            ],
+            "group_path": [],
+            "stacking_order": 5,
+            "alt_text": "",
+            "paragraphs": [
+              "Region",
+              "Value",
+              "North",
+              "42"
+            ],
+            "text_blocks": [
+              {
+                "text": "Region",
+                "paragraphs": [
+                  "Region"
+                ],
+                "source_kind": "table_cell",
+                "cell_row": 0,
+                "cell_column": 0,
+                "reading_order": null
+              },
+              {
+                "text": "Value",
+                "paragraphs": [
+                  "Value"
+                ],
+                "source_kind": "table_cell",
+                "cell_row": 0,
+                "cell_column": 1,
+                "reading_order": null
+              },
+              {
+                "text": "North",
+                "paragraphs": [
+                  "North"
+                ],
+                "source_kind": "table_cell",
+                "cell_row": 1,
+                "cell_column": 0,
+                "reading_order": null
+              },
+              {
+                "text": "42",
+                "paragraphs": [
+                  "42"
+                ],
+                "source_kind": "table_cell",
+                "cell_row": 1,
+                "cell_column": 1,
+                "reading_order": null
+              }
+            ],
+            "crop": null,
+            "asset_id": null,
+            "warning": null
+          },
+          {
+            "id": "slide-256:/ppt/slides/slide1.xml:12",
+            "slide": 1,
+            "source_part": "/ppt/slides/slide1.xml",
+            "source_shape_id": 12,
+            "source_name": "Chart 11",
+            "renderer_name": "ps_c42fa0579bb4a1be1ee6e208",
+            "parent_id": null,
+            "kind": "chart",
+            "inherited": false,
+            "source_scope": "slide",
+            "text": "Measure\nFirst\nSecond",
+            "transform": [
+              1.0,
+              0.0,
+              0.0,
+              1.0,
+              457200.0,
+              4389120.0
+            ],
+            "bounds": [
+              457200.0,
+              4389120.0,
+              4114800.0,
+              6217920.0
+            ],
+            "source_size": [
+              3657600,
+              1828800
+            ],
+            "local_geometry": [
+              457200,
+              4389120,
+              3657600,
+              1828800
+            ],
+            "group_path": [],
+            "stacking_order": 6,
+            "alt_text": "",
+            "paragraphs": [
+              "Measure",
+              "First",
+              "Second"
+            ],
+            "text_blocks": [
+              {
+                "text": "Measure\nFirst\nSecond",
+                "paragraphs": [
+                  "Measure",
+                  "First",
+                  "Second"
+                ],
+                "source_kind": "chart",
+                "cell_row": null,
+                "cell_column": null,
+                "reading_order": null
+              }
+            ],
+            "crop": null,
+            "asset_id": null,
+            "warning": null
+          }
+        ]
+      },
+      {
+        "number": 2,
+        "source_slide_id": 257,
+        "hidden": true,
+        "width": 9144000,
+        "height": 6858000,
+        "occurrences": [
+          {
+            "id": "slide-257:/ppt/slideMasters/slideMaster1.xml:13",
+            "slide": 2,
+            "source_part": "/ppt/slideMasters/slideMaster1.xml",
+            "source_shape_id": 13,
+            "source_name": "inherited-master-mark",
+            "renderer_name": "ps_1b75ce0d2f72afcd04c6aed4",
+            "parent_id": null,
+            "kind": "shape",
+            "inherited": true,
+            "source_scope": "master",
+            "text": "Inherited master",
+            "transform": [
+              1.0,
+              0.0,
+              0.0,
+              1.0,
+              6675120.0,
+              6126480.0
+            ],
+            "bounds": [
+              6675120.0,
+              6126480.0,
+              8686800.0,
+              6492240.0
+            ],
+            "source_size": [
+              2011680,
+              365760
+            ],
+            "local_geometry": [
+              6675120,
+              6126480,
+              2011680,
+              365760
+            ],
+            "group_path": [],
+            "stacking_order": 5,
+            "alt_text": "",
+            "paragraphs": [
+              "Inherited master"
+            ],
+            "text_blocks": [
+              {
+                "text": "Inherited master",
+                "paragraphs": [
+                  "Inherited master"
+                ],
+                "source_kind": "shape",
+                "cell_row": null,
+                "cell_column": null,
+                "reading_order": null
+              }
+            ],
+            "crop": null,
+            "asset_id": null,
+            "warning": null
+          },
+          {
+            "id": "slide-257:/ppt/slides/slide2.xml:2",
+            "slide": 2,
+            "source_part": "/ppt/slides/slide2.xml",
+            "source_shape_id": 2,
+            "source_name": "hidden-slide-text",
+            "renderer_name": "ps_cadf2e16a5d4b0d392c30dd8",
+            "parent_id": null,
+            "kind": "shape",
+            "inherited": false,
+            "source_scope": "slide",
+            "text": "Hidden slide retained",
+            "transform": [
+              1.0,
+              0.0,
+              0.0,
+              1.0,
+              731520.0,
+              914400.0
+            ],
+            "bounds": [
+              731520.0,
+              914400.0,
+              5303520.0,
+              1828800.0
+            ],
+            "source_size": [
+              4572000,
+              914400
+            ],
+            "local_geometry": [
+              731520,
+              914400,
+              4572000,
+              914400
+            ],
+            "group_path": [],
+            "stacking_order": 0,
+            "alt_text": "",
+            "paragraphs": [
+              "Hidden slide retained"
+            ],
+            "text_blocks": [
+              {
+                "text": "Hidden slide retained",
+                "paragraphs": [
+                  "Hidden slide retained"
+                ],
+                "source_kind": "shape",
+                "cell_row": null,
+                "cell_column": null,
+                "reading_order": null
+              }
+            ],
+            "crop": null,
+            "asset_id": null,
+            "warning": null
+          }
+        ]
+      }
+    ],
+    "assets": [
+      {
+        "id": "a96a6e67a2a8f7a55fc0f3184771e271477b73762d331b8b08889f672028e9b1",
+        "sha256": "a96a6e67a2a8f7a55fc0f3184771e271477b73762d331b8b08889f672028e9b1",
+        "extension": "png",
+        "size": 805
+      }
+    ]
+  },
+  "outcomes": [
+    {
+      "occurrence_id": "slide-256:/ppt/slideMasters/slideMaster1.xml:13",
+      "status": "isolated",
+      "method": "libreoffice_shape",
+      "file": "slide-1-object-12.png",
+      "warnings": [],
+      "alpha_extrema": [
+        0,
+        255
+      ]
+    },
+    {
+      "occurrence_id": "slide-256:/ppt/slides/slide1.xml:2",
+      "status": "isolated",
+      "method": "libreoffice_shape",
+      "file": "slide-1-object-1.png",
+      "warnings": [],
+      "alpha_extrema": [
+        0,
+        255
+      ]
+    },
+    {
+      "occurrence_id": "slide-256:/ppt/slides/slide1.xml:3",
+      "status": "isolated",
+      "method": "libreoffice_shape",
+      "file": "slide-1-object-2.png",
+      "warnings": [],
+      "alpha_extrema": [
+        0,
+        255
+      ]
+    },
+    {
+      "occurrence_id": "slide-256:/ppt/slides/slide1.xml:4",
+      "status": "isolated",
+      "method": "libreoffice_shape",
+      "file": "slide-1-object-3.png",
+      "warnings": [],
+      "alpha_extrema": [
+        0,
+        255
+      ]
+    },
+    {
+      "occurrence_id": "slide-256:/ppt/slides/slide1.xml:5",
+      "status": "isolated",
+      "method": "libreoffice_group",
+      "file": "slide-1-object-4.png",
+      "warnings": [],
+      "alpha_extrema": [
+        0,
+        255
+      ]
+    },
+    {
+      "occurrence_id": "slide-256:/ppt/slides/slide1.xml:6",
+      "status": "isolated",
+      "method": "libreoffice_shape",
+      "file": "slide-1-object-5.png",
+      "warnings": [],
+      "alpha_extrema": [
+        0,
+        255
+      ]
+    },
+    {
+      "occurrence_id": "slide-256:/ppt/slides/slide1.xml:7",
+      "status": "isolated",
+      "method": "libreoffice_group",
+      "file": "slide-1-object-6.png",
+      "warnings": [],
+      "alpha_extrema": [
+        0,
+        255
+      ]
+    },
+    {
+      "occurrence_id": "slide-256:/ppt/slides/slide1.xml:8",
+      "status": "isolated",
+      "method": "libreoffice_shape",
+      "file": "slide-1-object-7.png",
+      "warnings": [],
+      "alpha_extrema": [
+        0,
+        255
+      ]
+    },
+    {
+      "occurrence_id": "slide-256:/ppt/slides/slide1.xml:9",
+      "status": "isolated",
+      "method": "libreoffice_shape",
+      "file": "slide-1-object-8.png",
+      "warnings": [],
+      "alpha_extrema": [
+        0,
+        255
+      ]
+    },
+    {
+      "occurrence_id": "slide-256:/ppt/slides/slide1.xml:10",
+      "status": "isolated",
+      "method": "libreoffice_shape",
+      "file": "slide-1-object-9.png",
+      "warnings": [],
+      "alpha_extrema": [
+        0,
+        255
+      ]
+    },
+    {
+      "occurrence_id": "slide-256:/ppt/slides/slide1.xml:11",
+      "status": "isolated",
+      "method": "libreoffice_shape",
+      "file": "slide-1-object-10.png",
+      "warnings": [],
+      "alpha_extrema": [
+        15,
+        255
+      ]
+    },
+    {
+      "occurrence_id": "slide-256:/ppt/slides/slide1.xml:12",
+      "status": "isolated",
+      "method": "libreoffice_shape",
+      "file": "slide-1-object-11.png",
+      "warnings": [],
+      "alpha_extrema": [
+        0,
+        255
+      ]
+    },
+    {
+      "occurrence_id": "slide-257:/ppt/slideMasters/slideMaster1.xml:13",
+      "status": "isolated",
+      "method": "libreoffice_shape",
+      "file": "slide-2-object-2.png",
+      "warnings": [],
+      "alpha_extrema": [
+        0,
+        255
+      ]
+    },
+    {
+      "occurrence_id": "slide-257:/ppt/slides/slide2.xml:2",
+      "status": "isolated",
+      "method": "libreoffice_shape",
+      "file": "slide-2-object-1.png",
+      "warnings": [],
+      "alpha_extrema": [
+        0,
+        255
+      ]
+    }
+  ],
+  "missing_imported_objects": [],
+  "missing_imported_text": [],
+  "renderer_object_count": 24,
+  "source_occurrence_count": 14,
+  "original_unchanged": true,
+  "slide_failures": [],
+  "trusted_fixture_only": true
+}

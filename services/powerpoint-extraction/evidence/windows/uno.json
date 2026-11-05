@@ -1,0 +1,455 @@
+{
+  "bridge_python": "3.13.17 (main, Oct 23 2026, 16:13:12) [MSC v.1944 64 bit (AMD64)]",
+  "operating_system": "Windows-11-10.0.26200-SP0",
+  "office_version": "LibreOffice 26.8.2.2 9dea406ab7695df6325b11b0e19fdca8db4b7276",
+  "pages": [
+    {
+      "number": 1,
+      "width": 25400,
+      "height": 19050,
+      "file": "slide-1.png",
+      "objects": [
+        {
+          "name": "ps_a726f087534ee9611bc3b25c",
+          "parent": null,
+          "inherited": false,
+          "kind": "com.sun.star.drawing.CustomShape",
+          "text": "Source inventory proof\nSecond paragraph",
+          "position": [
+            762,
+            508
+          ],
+          "size": [
+            12699,
+            2031
+          ],
+          "file": "slide-1-object-1.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "ps_22ed9c91b2007b859ed3eca7",
+          "parent": null,
+          "inherited": false,
+          "kind": "com.sun.star.drawing.GraphicObjectShape",
+          "text": "",
+          "position": [
+            2264,
+            2434
+          ],
+          "size": [
+            5079,
+            3809
+          ],
+          "file": "slide-1-object-2.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "ps_81056488ce01fd73d6d3a461",
+          "parent": null,
+          "inherited": false,
+          "kind": "com.sun.star.drawing.GraphicObjectShape",
+          "text": "",
+          "position": [
+            7620,
+            3302
+          ],
+          "size": [
+            5079,
+            3809
+          ],
+          "file": "slide-1-object-3.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "ps_62e4694820dc7cbcfae4d7e1",
+          "parent": null,
+          "inherited": false,
+          "kind": "com.sun.star.drawing.GroupShape",
+          "text": "",
+          "position": [
+            14039,
+            3008
+          ],
+          "size": [
+            9063,
+            5744
+          ],
+          "file": "slide-1-object-4.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "ps_bf058b24f5712db52c66d961",
+          "parent": "ps_62e4694820dc7cbcfae4d7e1",
+          "inherited": false,
+          "kind": "com.sun.star.drawing.CustomShape",
+          "text": "Group parent",
+          "position": [
+            14234,
+            3008
+          ],
+          "size": [
+            5587,
+            1599
+          ],
+          "file": "slide-1-object-5.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "ps_2bbf696738310de4ee943849",
+          "parent": "ps_62e4694820dc7cbcfae4d7e1",
+          "inherited": false,
+          "kind": "com.sun.star.drawing.GroupShape",
+          "text": "",
+          "position": [
+            14757,
+            4275
+          ],
+          "size": [
+            8345,
+            4477
+          ],
+          "file": "slide-1-object-6.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "ps_4c3fd20d1c7e5df009ebbe2c",
+          "parent": "ps_2bbf696738310de4ee943849",
+          "inherited": false,
+          "kind": "com.sun.star.drawing.CustomShape",
+          "text": "Nested child",
+          "position": [
+            15226,
+            4275
+          ],
+          "size": [
+            5028,
+            1371
+          ],
+          "file": "slide-1-object-7.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "ps_9f7d983af1471aae653a4008",
+          "parent": "ps_2bbf696738310de4ee943849",
+          "inherited": false,
+          "kind": "com.sun.star.drawing.GraphicObjectShape",
+          "text": "",
+          "position": [
+            20477,
+            6186
+          ],
+          "size": [
+            2793,
+            1714
+          ],
+          "file": "slide-1-object-8.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "ps_ce4e335b18a2ea72e649b3b4",
+          "parent": null,
+          "inherited": false,
+          "kind": "com.sun.star.drawing.ConnectorShape",
+          "text": "",
+          "position": [
+            13970,
+            8636
+          ],
+          "size": [
+            8127,
+            0
+          ],
+          "file": "slide-1-object-9.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "ps_c8a31ec20faffc2b278685dc",
+          "parent": null,
+          "inherited": false,
+          "kind": "com.sun.star.drawing.TableShape",
+          "text": "Region\nValue\nNorth\n42",
+          "position": [
+            1270,
+            8636
+          ],
+          "size": [
+            7619,
+            2540
+          ],
+          "file": "slide-1-object-10.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "ps_c42fa0579bb4a1be1ee6e208",
+          "parent": null,
+          "inherited": false,
+          "kind": "com.sun.star.drawing.OLE2Shape",
+          "text": "Measure\nFirst\nSecond",
+          "position": [
+            1270,
+            12192
+          ],
+          "size": [
+            10159,
+            5079
+          ],
+          "file": "slide-1-object-11.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "ps_1b75ce0d2f72afcd04c6aed4",
+          "parent": null,
+          "inherited": true,
+          "kind": "com.sun.star.drawing.CustomShape",
+          "text": "Inherited master",
+          "position": [
+            18542,
+            17018
+          ],
+          "size": [
+            5587,
+            1015
+          ],
+          "file": "slide-1-object-12.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "ps_a13adc4ebc07535f4edfe5ca",
+          "parent": null,
+          "inherited": true,
+          "kind": "com.sun.star.presentation.DateTimeShape",
+          "text": "<date/time>",
+          "position": [
+            1270,
+            17657
+          ],
+          "size": [
+            5926,
+            1013
+          ],
+          "file": "slide-1-object-13.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "ps_293c27bd35c76b17f394077d",
+          "parent": null,
+          "inherited": true,
+          "kind": "com.sun.star.presentation.FooterShape",
+          "text": "<footer>",
+          "position": [
+            8678,
+            17657
+          ],
+          "size": [
+            8042,
+            1013
+          ],
+          "file": "slide-1-object-14.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "ps_8714fd55ac9169ad51e5ace4",
+          "parent": null,
+          "inherited": true,
+          "kind": "com.sun.star.presentation.SlideNumberShape",
+          "text": "<number>",
+          "position": [
+            18203,
+            17657
+          ],
+          "size": [
+            5926,
+            1013
+          ],
+          "file": "slide-1-object-15.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "",
+          "parent": null,
+          "inherited": true,
+          "kind": "com.sun.star.presentation.TitleTextShape",
+          "text": "Click to edit the title text format",
+          "position": [
+            1270,
+            760
+          ],
+          "size": [
+            22859,
+            3180
+          ],
+          "file": "slide-1-object-16.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "",
+          "parent": null,
+          "inherited": true,
+          "kind": "com.sun.star.presentation.OutlinerShape",
+          "text": "Click to edit the outline text format\nSecond Outline Level\nThird Outline Level\nFourth Outline Level\nFifth Outline Level\nSixth Outline Level\nSeventh Outline Level",
+          "position": [
+            1270,
+            4457
+          ],
+          "size": [
+            22859,
+            11048
+          ],
+          "file": "slide-1-object-17.png",
+          "export_error": null,
+          "text_introspection_error": null
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "width": 25400,
+      "height": 19050,
+      "file": "slide-2.png",
+      "objects": [
+        {
+          "name": "ps_cadf2e16a5d4b0d392c30dd8",
+          "parent": null,
+          "inherited": false,
+          "kind": "com.sun.star.drawing.CustomShape",
+          "text": "Hidden slide retained",
+          "position": [
+            2032,
+            2540
+          ],
+          "size": [
+            12699,
+            2539
+          ],
+          "file": "slide-2-object-1.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "ps_1b75ce0d2f72afcd04c6aed4",
+          "parent": null,
+          "inherited": true,
+          "kind": "com.sun.star.drawing.CustomShape",
+          "text": "Inherited master",
+          "position": [
+            18542,
+            17018
+          ],
+          "size": [
+            5587,
+            1015
+          ],
+          "file": "slide-2-object-2.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "ps_a13adc4ebc07535f4edfe5ca",
+          "parent": null,
+          "inherited": true,
+          "kind": "com.sun.star.presentation.DateTimeShape",
+          "text": "<date/time>",
+          "position": [
+            1270,
+            17657
+          ],
+          "size": [
+            5926,
+            1013
+          ],
+          "file": "slide-2-object-3.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "ps_293c27bd35c76b17f394077d",
+          "parent": null,
+          "inherited": true,
+          "kind": "com.sun.star.presentation.FooterShape",
+          "text": "<footer>",
+          "position": [
+            8678,
+            17657
+          ],
+          "size": [
+            8042,
+            1013
+          ],
+          "file": "slide-2-object-4.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "ps_8714fd55ac9169ad51e5ace4",
+          "parent": null,
+          "inherited": true,
+          "kind": "com.sun.star.presentation.SlideNumberShape",
+          "text": "<number>",
+          "position": [
+            18203,
+            17657
+          ],
+          "size": [
+            5926,
+            1013
+          ],
+          "file": "slide-2-object-5.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "",
+          "parent": null,
+          "inherited": true,
+          "kind": "com.sun.star.presentation.TitleTextShape",
+          "text": "Click to edit the title text format",
+          "position": [
+            1270,
+            760
+          ],
+          "size": [
+            22859,
+            3180
+          ],
+          "file": "slide-2-object-6.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "",
+          "parent": null,
+          "inherited": true,
+          "kind": "com.sun.star.presentation.OutlinerShape",
+          "text": "Click to edit the outline text format\nSecond Outline Level\nThird Outline Level\nFourth Outline Level\nFifth Outline Level\nSixth Outline Level\nSeventh Outline Level",
+          "position": [
+            1270,
+            4457
+          ],
+          "size": [
+            22859,
+            11048
+          ],
+          "file": "slide-2-object-7.png",
+          "export_error": null,
+          "text_introspection_error": null
+        }
+      ]
+    }
+  ]
+}

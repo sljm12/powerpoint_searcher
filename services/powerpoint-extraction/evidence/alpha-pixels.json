@@ -1,0 +1,38 @@
+[
+  {
+    "platform": "windows",
+    "file": "slide-1-object-3.png",
+    "size": [
+      240,
+      180
+    ],
+    "sample_position": [
+      60,
+      90
+    ],
+    "rgba": [
+      230,
+      68,
+      30,
+      190
+    ]
+  },
+  {
+    "platform": "linux",
+    "file": "slide-1-object-3.png",
+    "size": [
+      192,
+      144
+    ],
+    "sample_position": [
+      48,
+      72
+    ],
+    "rgba": [
+      229,
+      69,
+      29,
+      190
+    ]
+  }
+]

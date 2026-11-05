@@ -1,0 +1,148 @@
+{
+  "schema_version": 1,
+  "deck_id": "eda304b9-1727-4713-aef7-bb8c18ef78cb",
+  "source_revision": 1,
+  "generation_id": "7a57218b-cbc9-42d2-ad0f-f2a99c34face",
+  "source_sha256": "a6a9011c6d7b542a91dfcc1e6ba4c2e7d468f027b8ceab9663882b0f77efdf08",
+  "source_filename": "smartart-chevron.pptx",
+  "canonical_original_reference": null,
+  "content": {
+    "schema_version": 1,
+    "extractor_version": "0.1.0",
+    "renderer_version": "LibreOffice 24.2.7.2 420(Build:2)",
+    "config_fingerprint": "fa0c8f6a5c0d3ee0b99c214b74dd7edfc7e76451d90faee2efe6be89a3ed21ab",
+    "slides": [
+      {
+        "source": {
+          "number": 1,
+          "source_slide_id": 256,
+          "hidden": false,
+          "width": 9144000,
+          "height": 6858000
+        },
+        "preview": {
+          "asset_local_id": "slide-1",
+          "status": "rendered",
+          "method": "slide_render",
+          "pixel_size": [
+            960,
+            720
+          ],
+          "transparent": false,
+          "crop_rectangle": null,
+          "warnings": []
+        },
+        "occurrences": [
+          {
+            "source": {
+              "id": "slide-256:/ppt/slides/slide1.xml:4",
+              "slide": 1,
+              "source_part": "/ppt/slides/slide1.xml",
+              "source_shape_id": 4,
+              "source_name": "Diagram 3",
+              "renderer_name": "ps_81056488ce01fd73d6d3a461",
+              "parent_id": null,
+              "kind": "smartart",
+              "inherited": false,
+              "source_scope": "slide",
+              "text": "a\nb\nc",
+              "transform": [
+                1.0,
+                0.0,
+                0.0,
+                1.0,
+                1524000.0,
+                1397000.0
+              ],
+              "bounds": [
+                1524000.0,
+                1397000.0,
+                7620000.0,
+                5461000.0
+              ],
+              "source_size": [
+                6096000,
+                4064000
+              ],
+              "local_geometry": [
+                1524000,
+                1397000,
+                6096000,
+                4064000
+              ],
+              "group_path": [],
+              "stacking_order": 0,
+              "alt_text": "",
+              "paragraphs": [
+                "a",
+                "b",
+                "c"
+              ],
+              "text_blocks": [
+                {
+                  "text": "a\nb\nc",
+                  "paragraphs": [
+                    "a",
+                    "b",
+                    "c"
+                  ],
+                  "source_kind": "smartart",
+                  "cell_row": null,
+                  "cell_column": null,
+                  "reading_order": null
+                }
+              ],
+              "crop": null,
+              "asset_id": null,
+              "warning": null
+            },
+            "original_asset_local_id": null,
+            "original_available": false,
+            "primary": true,
+            "rendition": {
+              "asset_local_id": "rendition:slide-256:/ppt/slides/slide1.xml:4",
+              "status": "rendered",
+              "method": "libreoffice_shape",
+              "pixel_size": [
+                643,
+                429
+              ],
+              "transparent": true,
+              "crop_rectangle": null,
+              "warnings": []
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "assets": [
+    {
+      "asset_id": "d2a3ecba-5a21-4b03-9a5c-127ece4b4a16",
+      "local_id": "slide-1",
+      "media_type": "image/png",
+      "role": "slide_preview",
+      "pixel_size": [
+        960,
+        720
+      ],
+      "byte_length": 16101,
+      "sha256": "96f4b533ad5d290ccfa9ecddb3aa20e8f40f593c225f390cc2594376d84b1ccb",
+      "download_url": "/v1/assets/d2a3ecba-5a21-4b03-9a5c-127ece4b4a16"
+    },
+    {
+      "asset_id": "bbb2a497-dcfd-4a7e-8025-06e45d91a314",
+      "local_id": "rendition:slide-256:/ppt/slides/slide1.xml:4",
+      "media_type": "image/png",
+      "role": "isolated_render",
+      "pixel_size": [
+        643,
+        429
+      ],
+      "byte_length": 26444,
+      "sha256": "b7f204f5e1b2724bc41ff47198d079baaa8b5a7ff5ce20891e438ca29d64a273",
+      "download_url": "/v1/assets/bbb2a497-dcfd-4a7e-8025-06e45d91a314"
+    }
+  ],
+  "warnings": []
+}

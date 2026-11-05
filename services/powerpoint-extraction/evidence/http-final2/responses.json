@@ -1,0 +1,151 @@
+{
+  "platform": "Linux-6.18.54.1-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "python": "3.12.3 (main, Jun 18 2025, 17:59:45) [GCC 13.3.0]",
+  "ordinary": {
+    "job": {
+      "job_id": "dc19c8bf-13c3-4d4a-a3d1-3147c601e0e0",
+      "deck_id": "22d52086-c3cc-47ba-b03e-4fa7429a8d96",
+      "source_revision": 1,
+      "generation_id": "47b82266-b454-497f-b8ee-7d73fc62ca62",
+      "state": "succeeded",
+      "stage": "publishing",
+      "attempt": 1,
+      "completed_slides": 2,
+      "total_slides": 2,
+      "created_at": "2026-11-05T12:02:39.868266+00:00",
+      "updated_at": "2026-11-05T12:02:42.066793+00:00",
+      "error": null,
+      "warnings": [],
+      "status_url": "/v1/jobs/dc19c8bf-13c3-4d4a-a3d1-3147c601e0e0",
+      "manifest_url": "/v1/decks/22d52086-c3cc-47ba-b03e-4fa7429a8d96/manifest?generation=47b82266-b454-497f-b8ee-7d73fc62ca62"
+    },
+    "slides": 2,
+    "assets": 17,
+    "source_sha256": "a332195edd3cf415dce4a1cbaf65362cc8c5376c7b57cb86becb85589963860c"
+  },
+  "replacement": {
+    "job": {
+      "job_id": "c48f81ff-fe58-4f3b-9fc9-c113352a5c68",
+      "deck_id": "22d52086-c3cc-47ba-b03e-4fa7429a8d96",
+      "source_revision": 2,
+      "generation_id": "75d79c9f-4c30-4289-a61c-10f03bf01718",
+      "state": "succeeded",
+      "stage": "publishing",
+      "attempt": 1,
+      "completed_slides": 2,
+      "total_slides": 2,
+      "created_at": "2026-11-05T12:02:42.188498+00:00",
+      "updated_at": "2026-11-05T12:02:44.022517+00:00",
+      "error": null,
+      "warnings": [],
+      "status_url": "/v1/jobs/c48f81ff-fe58-4f3b-9fc9-c113352a5c68",
+      "manifest_url": "/v1/decks/22d52086-c3cc-47ba-b03e-4fa7429a8d96/manifest?generation=75d79c9f-4c30-4289-a61c-10f03bf01718"
+    },
+    "slides": 2,
+    "assets": 17,
+    "source_sha256": "a332195edd3cf415dce4a1cbaf65362cc8c5376c7b57cb86becb85589963860c"
+  },
+  "delete": {
+    "deck_id": "22d52086-c3cc-47ba-b03e-4fa7429a8d96",
+    "state": "complete",
+    "error": null
+  },
+  "delete_processing_job": {
+    "job_id": "0210204c-df96-4abb-9573-72e5410418d9",
+    "deck_id": "5e09f01f-ff4b-482e-a948-a145b558fa66",
+    "source_revision": 1,
+    "generation_id": "226599e1-2a6c-49a2-b05c-4eaa4843184d",
+    "state": "processing",
+    "stage": "rendering",
+    "attempt": 1,
+    "completed_slides": 0,
+    "total_slides": 2,
+    "created_at": "2026-11-05T12:02:44.231131+00:00",
+    "updated_at": "2026-11-05T12:02:44.290052+00:00",
+    "error": null,
+    "warnings": [],
+    "status_url": "/v1/jobs/0210204c-df96-4abb-9573-72e5410418d9",
+    "manifest_url": null
+  },
+  "delete_processing": {
+    "deck_id": "5e09f01f-ff4b-482e-a948-a145b558fa66",
+    "state": "complete",
+    "error": null
+  },
+  "restart_failure": {
+    "job_id": "b4a5f270-1e9d-4664-82ee-7b4ee6664990",
+    "deck_id": "a9638f56-887b-4f9e-a491-2d9f1e5d3dc2",
+    "source_revision": 1,
+    "generation_id": "6c84eb1c-5628-494c-914f-5bcc441fed23",
+    "state": "failed",
+    "stage": "rendering",
+    "attempt": 1,
+    "completed_slides": 0,
+    "total_slides": 2,
+    "created_at": "2026-11-05T12:02:44.374006+00:00",
+    "updated_at": "2026-11-05T12:02:45.527148+00:00",
+    "error": {
+      "code": "worker_interrupted",
+      "message": "Processing was interrupted; retry this job.",
+      "retryable": true,
+      "stage": "rendering"
+    },
+    "warnings": [],
+    "status_url": "/v1/jobs/b4a5f270-1e9d-4664-82ee-7b4ee6664990",
+    "manifest_url": null
+  },
+  "restart-retry": {
+    "job": {
+      "job_id": "fedaec29-67ae-4f57-8868-663df5da4040",
+      "deck_id": "a9638f56-887b-4f9e-a491-2d9f1e5d3dc2",
+      "source_revision": 1,
+      "generation_id": "879f94c8-6d4a-4c52-8b17-abcf4affeb51",
+      "state": "succeeded",
+      "stage": "publishing",
+      "attempt": 2,
+      "completed_slides": 2,
+      "total_slides": 2,
+      "created_at": "2026-11-05T12:02:45.578768+00:00",
+      "updated_at": "2026-11-05T12:02:47.440577+00:00",
+      "error": null,
+      "warnings": [],
+      "status_url": "/v1/jobs/fedaec29-67ae-4f57-8868-663df5da4040",
+      "manifest_url": "/v1/decks/a9638f56-887b-4f9e-a491-2d9f1e5d3dc2/manifest?generation=879f94c8-6d4a-4c52-8b17-abcf4affeb51"
+    },
+    "slides": 2,
+    "assets": 17,
+    "source_sha256": "a332195edd3cf415dce4a1cbaf65362cc8c5376c7b57cb86becb85589963860c"
+  },
+  "smartart": {
+    "job": {
+      "job_id": "b39512b2-e555-46c9-bbe1-97084b132705",
+      "deck_id": "eda304b9-1727-4713-aef7-bb8c18ef78cb",
+      "source_revision": 1,
+      "generation_id": "7a57218b-cbc9-42d2-ad0f-f2a99c34face",
+      "state": "succeeded",
+      "stage": "publishing",
+      "attempt": 1,
+      "completed_slides": 1,
+      "total_slides": 1,
+      "created_at": "2026-11-05T12:02:47.644583+00:00",
+      "updated_at": "2026-11-05T12:02:49.230022+00:00",
+      "error": null,
+      "warnings": [],
+      "status_url": "/v1/jobs/b39512b2-e555-46c9-bbe1-97084b132705",
+      "manifest_url": "/v1/decks/eda304b9-1727-4713-aef7-bb8c18ef78cb/manifest?generation=7a57218b-cbc9-42d2-ad0f-f2a99c34face"
+    },
+    "slides": 1,
+    "assets": 2,
+    "source_sha256": "a6a9011c6d7b542a91dfcc1e6ba4c2e7d468f027b8ceab9663882b0f77efdf08"
+  },
+  "invalid": {
+    "error": {
+      "code": "invalid_presentation",
+      "message": "Presentation is invalid, unsafe or exceeds supported content limits.",
+      "retryable": false,
+      "stage": null
+    },
+    "request_id": "b48e9745-ff78-404b-a01e-0b0b4333d9b6"
+  },
+  "passed": true
+}

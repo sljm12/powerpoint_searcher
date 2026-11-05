@@ -1,0 +1,7 @@
+# Fixture provenance
+
+`representative.pptx` is generated into each evidence directory by `powerpoint_extraction.fixtures.generate`. It contains ordinary text, a table, a chart with labels, three occurrences of identical alpha PNG bytes, a cropped/rotated picture, nested rotated and scaled groups, a connector, a non-placeholder master graphic and a hidden slide. The generator uses private XML access only where python-pptx does not expose a fixture-authoring API for master shapes and hidden status.
+
+`smartart-chevron.pptx` is an unmodified genuine SmartArt regression fixture from [LibreOffice core](https://github.com/LibreOffice/core/blob/2704821c6b6e829b5ef5c32cdc8eb2a03b6114a9/sd/qa/unit/data/pptx/smartart-chevron.pptx). Its source revision is `2704821c6b6e829b5ef5c32cdc8eb2a03b6114a9`. Its SHA-256 is `a6a9011c6d7b542a91dfcc1e6ba4c2e7d468f027b8ceab9663882b0f77efdf08`. It includes actual diagram data, layout, style and relationship parts. It is not an ordinary shape relabelled SmartArt. The upstream Mozilla Public License 2.0 is retained in [COPYING.MPL](COPYING.MPL). Preserve attribution and license when redistributing this fixture.
+
+The LibreOffice page and isolated object exports preserve the three chevrons and `a`, `b`, `c` labels on Windows and Linux. The labels sit on the left edge of the chevrons. No original PowerPoint screenshot is available, so close visual fidelity to PowerPoint remains provisional. This fixture proves package import, source mapping, retained text and available export. It does not establish PowerPoint pixel parity.

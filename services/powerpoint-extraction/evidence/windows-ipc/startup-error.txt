@@ -1,0 +1,15 @@
+Traceback (most recent call last):
+  File "<string>", line 3, in <module>
+    try: runpy.run_path('worker.py',run_name='__main__')
+         ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen runpy>", line 294, in run_path
+  File "<frozen runpy>", line 98, in _run_module_code
+  File "<frozen runpy>", line 88, in _run_code
+  File "worker.py", line 207, in <module>
+    main()
+    ~~~~^^
+  File "worker.py", line 69, in main
+    raise RuntimeError(
+        "LibreOffice private pipe did not become available"
+    ) from None
+RuntimeError: LibreOffice private pipe did not become available

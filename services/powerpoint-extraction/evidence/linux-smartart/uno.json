@@ -1,0 +1,177 @@
+{
+  "bridge_python": "3.12.3 (main, Jun 18 2025, 17:59:45) [GCC 13.3.0]",
+  "operating_system": "Linux-6.18.54.1-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "office_version": "LibreOffice 24.2.7.2 420(Build:2)",
+  "pages": [
+    {
+      "number": 1,
+      "width": 25400,
+      "height": 19050,
+      "file": "slide-1.png",
+      "objects": [
+        {
+          "name": "ps_81056488ce01fd73d6d3a461",
+          "parent": null,
+          "inherited": false,
+          "kind": "com.sun.star.drawing.GroupShape",
+          "text": "",
+          "position": [
+            4233,
+            3881
+          ],
+          "size": [
+            16932,
+            11288
+          ],
+          "file": "slide-1-object-1.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "",
+          "parent": "ps_81056488ce01fd73d6d3a461",
+          "inherited": false,
+          "kind": "com.sun.star.drawing.CustomShape",
+          "text": "",
+          "position": [
+            4233,
+            3881
+          ],
+          "size": [
+            16932,
+            11288
+          ],
+          "file": "slide-1-object-2.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "",
+          "parent": "ps_81056488ce01fd73d6d3a461",
+          "inherited": false,
+          "kind": "com.sun.star.drawing.CustomShape",
+          "text": "a",
+          "position": [
+            4233,
+            3881
+          ],
+          "size": [
+            5643,
+            11288
+          ],
+          "file": "slide-1-object-3.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "",
+          "parent": "ps_81056488ce01fd73d6d3a461",
+          "inherited": false,
+          "kind": "com.sun.star.drawing.CustomShape",
+          "text": "b",
+          "position": [
+            9878,
+            3881
+          ],
+          "size": [
+            5643,
+            11288
+          ],
+          "file": "slide-1-object-4.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "",
+          "parent": "ps_81056488ce01fd73d6d3a461",
+          "inherited": false,
+          "kind": "com.sun.star.drawing.CustomShape",
+          "text": "c",
+          "position": [
+            15522,
+            3881
+          ],
+          "size": [
+            5643,
+            11288
+          ],
+          "file": "slide-1-object-5.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "ps_5dbdbda21e50323412fc1396",
+          "parent": null,
+          "inherited": true,
+          "kind": "com.sun.star.presentation.TitleTextShape",
+          "text": "Click to edit Master title style",
+          "position": [
+            1905,
+            5918
+          ],
+          "size": [
+            21589,
+            4082
+          ],
+          "file": "slide-1-object-6.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "ps_e74c9ae6be6c26f5f7024594",
+          "parent": null,
+          "inherited": true,
+          "kind": "com.sun.star.presentation.DateTimeShape",
+          "text": "<date/time>",
+          "position": [
+            1270,
+            17657
+          ],
+          "size": [
+            5926,
+            1013
+          ],
+          "file": "slide-1-object-7.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "ps_39676b4cf6be32f4dc3c4366",
+          "parent": null,
+          "inherited": true,
+          "kind": "com.sun.star.presentation.FooterShape",
+          "text": "<footer>",
+          "position": [
+            8678,
+            17657
+          ],
+          "size": [
+            8042,
+            1013
+          ],
+          "file": "slide-1-object-8.png",
+          "export_error": null,
+          "text_introspection_error": null
+        },
+        {
+          "name": "ps_5a794fa09127d75db9d9ffec",
+          "parent": null,
+          "inherited": true,
+          "kind": "com.sun.star.presentation.SlideNumberShape",
+          "text": "<number>",
+          "position": [
+            18203,
+            17657
+          ],
+          "size": [
+            5926,
+            1013
+          ],
+          "file": "slide-1-object-9.png",
+          "export_error": null,
+          "text_introspection_error": null
+        }
+      ]
+    }
+  ]
+}

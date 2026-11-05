@@ -1,0 +1,99 @@
+{
+  "inventory": {
+    "schema_version": 1,
+    "original_sha256": "a6a9011c6d7b542a91dfcc1e6ba4c2e7d468f027b8ceab9663882b0f77efdf08",
+    "slides": [
+      {
+        "number": 1,
+        "source_slide_id": 256,
+        "hidden": false,
+        "width": 9144000,
+        "height": 6858000,
+        "occurrences": [
+          {
+            "id": "slide-256:/ppt/slides/slide1.xml:4",
+            "slide": 1,
+            "source_part": "/ppt/slides/slide1.xml",
+            "source_shape_id": 4,
+            "source_name": "Diagram 3",
+            "renderer_name": "ps_81056488ce01fd73d6d3a461",
+            "parent_id": null,
+            "kind": "smartart",
+            "inherited": false,
+            "source_scope": "slide",
+            "text": "a\nb\nc",
+            "transform": [
+              1.0,
+              0.0,
+              0.0,
+              1.0,
+              1524000.0,
+              1397000.0
+            ],
+            "bounds": [
+              1524000.0,
+              1397000.0,
+              7620000.0,
+              5461000.0
+            ],
+            "source_size": [
+              6096000,
+              4064000
+            ],
+            "local_geometry": [
+              1524000,
+              1397000,
+              6096000,
+              4064000
+            ],
+            "group_path": [],
+            "stacking_order": 0,
+            "alt_text": "",
+            "paragraphs": [
+              "a",
+              "b",
+              "c"
+            ],
+            "text_blocks": [
+              {
+                "text": "a\nb\nc",
+                "paragraphs": [
+                  "a",
+                  "b",
+                  "c"
+                ],
+                "source_kind": "smartart",
+                "cell_row": null,
+                "cell_column": null,
+                "reading_order": null
+              }
+            ],
+            "crop": null,
+            "asset_id": null,
+            "warning": null
+          }
+        ]
+      }
+    ],
+    "assets": []
+  },
+  "outcomes": [
+    {
+      "occurrence_id": "slide-256:/ppt/slides/slide1.xml:4",
+      "status": "contextual_crop",
+      "method": "slide_crop",
+      "file": "crop-84f21a4671e6611803de.png",
+      "warnings": [
+        "Contextual slide crop includes background and overlapping content; not isolated"
+      ],
+      "alpha_extrema": null
+    }
+  ],
+  "missing_imported_objects": [],
+  "missing_imported_text": [],
+  "renderer_object_count": 10,
+  "source_occurrence_count": 1,
+  "original_unchanged": true,
+  "slide_failures": [],
+  "trusted_fixture_only": true
+}

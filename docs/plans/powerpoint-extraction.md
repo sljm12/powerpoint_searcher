@@ -4,7 +4,7 @@ Create searchable slide content and downloadable slide and graphic images for th
 Run on Windows and Linux without requiring Microsoft PowerPoint or cloud processing.
 Use a Python extraction library together with headless LibreOffice, subject to the rendering proof below.
 Deliver EX1, the extraction service, followed by EX2, the library integration and downloads.
-This is a planning deliverable. No application code, renderer prototype, or performance result exists yet.
+EX1 implementation is present under `services/powerpoint-extraction/`. Renderer and live HTTP evidence exists for selected fixtures and workflows. EX1 remains open because source parsing is not confined, native Windows confinement and inherited dynamic fields are unsupported, SmartArt fidelity is provisional, and representative capacity is not measured. EX2 is out of scope for the current implementation request.
 
 ## How to read this
 
@@ -66,41 +66,41 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 
 **Files.**
 
-- [ ] Create the extraction module README, dependency manifest, API contract, implementation, tests, and fixtures under `services/powerpoint-extraction/`.
-- [ ] Keep executable probes and their repeatable commands in the extraction module.
-- [ ] Update this plan with selected versions, measured limits, and prototype evidence.
+- [x] Create the extraction module README, dependency manifest, API contract, implementation, tests, and fixtures under `services/powerpoint-extraction/`.
+- [x] Keep executable probes and their repeatable commands in the extraction module.
+- [x] Update this plan with selected versions, measured limits, and prototype evidence.
 
 **Build.**
 
-- [ ] First create representative decks with ordinary text, tables, chart labels, pictures, cropped pictures, transparency, rotation, nested groups, connectors, SmartArt, master content, hidden slides, and repeated image bytes.
-- [ ] Compare library extraction plus LibreOffice rendering with LibreOffice-only extraction. Use the same fixtures and save all outputs.
-- [ ] Prove page export, isolated shape export, group export, alpha behavior, and source-to-renderer object mapping on Windows and Linux.
-- [ ] Detect source elements lost or rewritten by LibreOffice. Do not infer coverage from a successful process exit.
-- [ ] For unmapped objects, prove the labelled slide-crop fallback using source geometry and the actual rendered slide dimensions.
-- [ ] If the imported slide itself loses content, report a failed required rendition. A crop cannot recover missing content.
-- [ ] Finalize the provisional data model in Appendix B with runtime-validated request and response schemas.
-- [ ] Extract text and original image bytes using public library APIs where supported. Use bounded OOXML inspection for required properties not exposed by the library.
-- [ ] Render each slide and visible drawable object, including grouped and inherited content. Preserve hierarchy without inventing semantic groups from nearby shapes.
-- [ ] Export all children and the parent of an explicit group. Give the parent priority in default browsing to avoid presenting repeated pieces as separate primary graphics.
-- [ ] Distinguish original files, isolated object images, and contextual crops in metadata and download labels.
-- [ ] Implement durable jobs, restart recovery, retry, immutable output generations, and deletion fencing as defined in Appendix B.
-- [ ] Implement resource limits, authentication boundaries, private file storage, safe archive handling, macro suppression, and disabled external content fetching.
-- [ ] Run one conversion at a time initially with an isolated LibreOffice profile and temporary directory. Terminate timed-out worker processes and clean their temporary files.
-- [ ] Keep LibreOffice inside this service as a local worker integration. Use its available Python UNO bridge without creating another application service.
-- [ ] Define requests, responses, errors, authentication, retention, and independent start commands in the module API contract and README.
+- [x] First create representative decks with ordinary text, tables, chart labels, pictures, cropped pictures, transparency, rotation, nested groups, connectors, SmartArt, master content, hidden slides, and repeated image bytes.
+- [x] Compare library extraction plus LibreOffice rendering with LibreOffice-only extraction. Use the same fixtures and save all outputs.
+- [x] Prove page export, isolated shape export, group export, alpha behavior, and source-to-renderer object mapping on Windows and Linux.
+- [x] Detect source elements lost or rewritten by LibreOffice. Do not infer coverage from a successful process exit.
+- [x] For unmapped objects, prove the labelled slide-crop fallback using source geometry and the actual rendered slide dimensions.
+- [x] If the imported slide itself loses content, report a failed required rendition. A crop cannot recover missing content.
+- [x] Finalize the provisional data model in Appendix B with runtime-validated request and response schemas.
+- [x] Extract text and original image bytes using public library APIs where supported. Use bounded OOXML inspection for required properties not exposed by the library.
+- [ ] Render each slide and visible drawable object, including grouped and inherited content. Preserve hierarchy without inventing semantic groups from nearby shapes. Enabled inherited date, footer, and slide-number fields remain unsupported and fail the required slide rendition. See `services/powerpoint-extraction/LIMITATIONS.md`.
+- [x] Export all children and the parent of an explicit group. Give the parent priority in default browsing to avoid presenting repeated pieces as separate primary graphics.
+- [x] Distinguish original files, isolated object images, and contextual crops in metadata and download labels.
+- [x] Implement durable jobs, restart recovery, retry, immutable output generations, and deletion fencing as defined in Appendix B.
+- [x] Implement resource limits, authentication boundaries, private file storage, safe archive handling, macro suppression, and disabled external content fetching. Source package parsing remains in the service process; only Linux LibreOffice conversion is OS-confined. Native Windows rendering remains disabled because confinement is not proven there. See `services/powerpoint-extraction/LIMITATIONS.md`.
+- [x] Run one conversion at a time initially with an isolated LibreOffice profile and temporary directory. Terminate timed-out worker processes and clean their temporary files.
+- [x] Keep LibreOffice inside this service as a local worker integration. Use its available Python UNO bridge without creating another application service.
+- [x] Define requests, responses, errors, authentication, retention, and independent start commands in the module API contract and README.
 
 **You see.**
 
-- [ ] A valid upload returns a job immediately. Polling eventually exposes a complete manifest with slide previews and graphic downloads.
-- [ ] Original picture downloads match the embedded bytes. Rendered downloads identify their method and any warnings.
-- [ ] Unsupported exports produce actionable failures or explicitly allowed crop warnings. No source object silently disappears.
+- [x] A valid upload returns a job immediately. Polling eventually exposes a complete manifest with slide previews and graphic downloads.
+- [x] Original picture downloads match the embedded bytes. Rendered downloads identify their method and any warnings.
+- [x] Unsupported exports produce actionable failures or explicitly allowed crop warnings. No source object silently disappears.
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] Add fixture-based checks for text, image bytes, occurrence identity, transforms, groups, hidden slides, and rendition coverage.
-- [ ] Add focused lifecycle checks for duplicate submission, retry, restart recovery, deletion during conversion, and stale generation publication.
-- [ ] Check API schema validation, inaccessible assets, malformed archives, size limits, process failure, timeout, and missing renderer dependencies.
-- [ ] Run the extraction module's documented test and type-check commands. Save actual commands and exit codes.
+- [x] Add fixture-based checks for text, image bytes, occurrence identity, transforms, groups, hidden slides, and rendition coverage.
+- [x] Add focused lifecycle checks for duplicate submission, retry, restart recovery, deletion during conversion, and stale generation publication.
+- [x] Check API schema validation, inaccessible assets, malformed archives, size limits, process failure, timeout, and missing renderer dependencies.
+- [x] Run the extraction module's documented test and type-check commands. Save actual commands and exit codes in `services/powerpoint-extraction/PROOF.md`.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on the configured `swarm workers` model at the PR head, when running the pstack PR workflow. These are scenarios, not a requirement for ten simultaneous processes.
 
@@ -117,10 +117,10 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] Metric. Measure per-deck wall time, peak worker memory, output bytes, timeout counts, and queue delay. Include a typical 20-slide deck and the full capacity set.
-- [ ] Probe. Record identical fixtures and cold and warm conditions for repeated runs. Compare both candidate extraction approaches where both perform the same work.
-- [ ] Baseline. Record that trunk has no comparable conversion path. Measure candidate baseline first. Do not calculate a trunk speedup.
-- [ ] Rule. Before enabling production processing, use measured evidence to set documented file, archive, image, memory, queue, and time limits. Adopt numerical service targets only after baseline review, as the constitution requires. Failure to complete within those selected limits fails this phase.
+- [x] Metric. Measure per-deck wall time, sampled worker memory, output bytes, timeout counts, and queue observations. Include a 20-slide fixture and 100-deck serial set. See `services/powerpoint-extraction/evidence/capacity-20261105/README.md`; memory and queue figures are sampled, not exact peaks.
+- [ ] Probe. Record identical fixtures and cold and warm conditions for repeated runs. Compare both candidate extraction approaches where both perform the same work. The retained run used identical fixtures but did not flush the OS page cache or run a comparative LibreOffice-only workflow.
+- [x] Baseline. Record that trunk has no comparable conversion path. Measure candidate baseline first. Do not calculate a trunk speedup.
+- [ ] Rule. Before enabling production processing, use measured evidence to set documented file, archive, image, memory, queue, and time limits. Adopt numerical service targets only after baseline review, as the constitution requires. Failure to complete within those selected limits fails this phase. Current guardrails predate the single-host run and are not production targets.
 
 **Review gate.** None. EX1 is not review-gated for a frontend interaction. Review the actual exported images and contract as technical evidence.
 
@@ -207,10 +207,19 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 
 ## Appendix A. Prototype evidence
 
-No rendering prototype has been run. Neither Python nor LibreOffice was found by the current shell's command lookup.
-That observation does not establish that they are absent from all installation paths.
-The repository has no code, dependencies, presentation fixtures, clients, or deployment setup to run.
-No prototype branch, SHA, screenshot, or measured rendering result exists.
+The EX1 implementation decision is source-first: bounded OOXML and python-pptx inspection supplies stable source identity and original media bytes, while LibreOffice supplies actual slide and shape renders. The retained UNO-only report is compared against the same source fixture. This keeps lost imports detectable and gives crops source geometry when an isolated export fails.
+
+The Windows and Linux renderer versions, fixture checksums, actual PNGs, and source-to-renderer mapping outcomes are recorded in `services/powerpoint-extraction/PROOF.md` and `services/powerpoint-extraction/evidence/`. The ordinary fixture has 14 occurrences and zero mapping/text failures on both platforms. The genuine SmartArt fixture maps and exports on both, but visual fidelity remains provisional without a PowerPoint reference.
+
+The validated Python dependency versions are pinned in `services/powerpoint-extraction/uv.lock`; LibreOffice and OS confinement dependencies are external. Limits are guardrails and are listed in `services/powerpoint-extraction/LIMITATIONS.md`. No 20-slide or 100-deck capacity measurement is claimed. Native Windows AppContainer cannot connect to LibreOffice's UNO pipe, so the native Windows renderer remains unavailable.
+
+| Runtime | Verified version |
+| --- | --- |
+| Windows Python | 3.12.11 |
+| Windows LibreOffice | 26.8.2.2 |
+| Linux Python | 3.12.3 |
+| Linux LibreOffice | 24.2.7.2 |
+| Python packages | Exact versions and hashes in `services/powerpoint-extraction/uv.lock` |
 
 Context7 resolution and documentation retrieval succeeded for python-pptx and the LibreOffice developer guide on 2026-11-01.
 PowerShell blocked the initial npx.ps1 wrapper. Calling npx.cmd succeeded without changing execution policy.
@@ -382,8 +391,7 @@ Close visual similarity permits differences, but not silent loss of content. Kee
 An isolated export preserves its own effects where the renderer supports them. It cannot promise the pixels of an occluded original slide region.
 The first proof may invalidate LibreOffice object isolation or mapping. In that case use the approved labelled crop fallback where the slide is correct.
 If slide rendering itself fails fidelity acceptance, revisit the renderer before production code proceeds.
-Neither Windows nor Linux rendering has been tested in this planning session.
-No absolute performance or memory target has been measured.
+Both operating systems have retained LibreOffice fixture renders and source-mapping reports. This does not establish native Windows confinement or SmartArt fidelity against PowerPoint. No representative performance or memory baseline has been measured.
 
 Model the Domain shaped the separation of shared image bytes, source occurrences, and renderings.
 Sequence Work into Verifiable Units shaped the EX1 dependency and the renderer proof before user-facing integration.
