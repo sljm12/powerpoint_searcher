@@ -13,19 +13,51 @@ $env:EX1_DATA_DIR = "$env:LOCALAPPDATA\PowerPointSearcher\extraction"
 uv run python -m powerpoint_extraction
 ```
 
-On Linux, including WSL, install LibreOffice Impress, `python3-uno`, bubblewrap, and the required fonts. The user systemd manager must have delegated cgroup v2 memory and process limits.
+### Run in WSL2
 
-```sh
-export UV_PROJECT_ENVIRONMENT="$HOME/.cache/powerpoint-extraction-venv"
-uv sync --locked
-export EX1_TOKEN="$(openssl rand -hex 32)"
-export EX1_DATA_DIR="$HOME/.local/share/powerpoint-extraction"
-export EX1_BRIDGE=/usr/bin/python3
-export EX1_OFFICE=/usr/bin/soffice
-uv run python -m powerpoint_extraction
-```
+The verified Linux deployment uses Ubuntu 24.04 in WSL2. Native Windows rendering is unavailable, so run the service inside WSL even when the rest of the application runs on Windows.
 
-Keep both the uv environment and private service data on a Linux filesystem. The WSL checkout may be under `/mnt/d`, but its exFAT-backed files should not hold Python virtual environments or private service data.
+1. In Windows PowerShell, install and start the Ubuntu 24.04 distribution:
+
+   ```powershell
+   wsl --install -d Ubuntu-24.04
+   wsl -d Ubuntu-24.04
+   ```
+
+2. In the Ubuntu shell, install the Linux renderer dependencies and fonts:
+
+   ```sh
+   sudo apt update
+   sudo apt install bubblewrap fonts-liberation2 libreoffice-impress python3-uno
+   ```
+
+   WSL must run systemd, and its user manager must have delegated cgroup v2 memory and process limits. If systemd is not enabled, add this to `/etc/wsl.conf`:
+
+   ```ini
+   [boot]
+   systemd=true
+   ```
+
+   Then run `wsl --shutdown` from PowerShell and reopen Ubuntu. The service fails closed at startup if bubblewrap or the required cgroup limits are unavailable.
+
+3. Clone the repository inside the WSL Linux filesystem, or use an existing checkout. Keep the virtual environment and service data under your Linux home directory. Do not place them under `/mnt/d`; the repository's exFAT-backed drive does not support the required private-file permissions.
+
+4. From the repository root in Ubuntu, install the service and start it:
+
+   ```sh
+   cd services/powerpoint-extraction
+   export UV_PROJECT_ENVIRONMENT="$HOME/.cache/powerpoint-extraction-venv"
+   uv sync --locked
+   export EX1_TOKEN="$(openssl rand -hex 32)"
+   export EX1_DATA_DIR="$HOME/.local/share/powerpoint-extraction"
+   export EX1_BRIDGE=/usr/bin/python3
+   export EX1_OFFICE=/usr/bin/soffice
+   uv run python -m powerpoint_extraction
+   ```
+
+   Keep the exported token in this shell. The service listens on `127.0.0.1:8001`; from Windows, WSL forwards that loopback port to `http://localhost:8001`. Check readiness with `curl http://localhost:8001/health`. Stop the service with `Ctrl+C`.
+
+To run the automated checks instead, use `uv run --locked pytest -q`, `uv run --locked mypy src`, and `uv run --locked ruff check src tests` from the service directory. WSL2 test results are recorded in [evidence/checks.md](evidence/checks.md).
 
 The service binds to `127.0.0.1:8001` by default. `EX1_HOST` and `EX1_PORT` configure the listener. The renderer initializes during startup. `/health` reports whether the configured confined runtime is ready. Native Windows rendering currently fails closed because LibreOffice's UNO pipe cannot be reached inside the tested zero-capability AppContainer. Linux rendering requires the documented bubblewrap and cgroup setup. There is no unconfined fallback.
 
