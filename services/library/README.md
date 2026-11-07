@@ -4,7 +4,21 @@ This independently startable Python service owns canonical uploaded decks and du
 
 ## Install and start
 
-Use Python 3.12 or later and `uv`. From `services/library/`, install the locked dependencies:
+Use Python 3.12 or later and `uv`. From `services/library/`, install the locked dependencies and start the service.
+
+### Linux
+
+```sh
+uv sync --locked
+export LIBRARY_TOKEN='<random printable secret of at least 32 bytes>'
+export EX1_TOKEN='<the extraction service token>'
+export EXTRACTION_URL='http://127.0.0.1:8001'
+export LIBRARY_DATA_DIR="$HOME/.local/share/powerpoint-library"
+export LIBRARY_ORIGINS='http://localhost:5173'
+uv run python -m library_service
+```
+
+### Windows PowerShell
 
 ```powershell
 uv sync --locked
@@ -18,7 +32,7 @@ uv run python -m library_service
 
 The service listens on `127.0.0.1:8000`. `LIBRARY_HOST` and `LIBRARY_PORT` change that listener. The library can start when extraction is unavailable. Accepted work remains durable and temporary network failures retry with bounded backoff. After five consecutive processing failures, status becomes `failed` with an actionable retry. A full extraction queue keeps accepted work queued with capped backoff. Deletion continues retrying until both local and extraction cleanup complete.
 
-On Linux, use a private directory under the service user's home, such as `LIBRARY_DATA_DIR="$HOME/.local/share/powerpoint-library"`. On Windows, use a dedicated NTFS directory. The service rejects links and non-NTFS Windows data volumes, protects the directory for the current user, and holds an exclusive lifetime owner lock. Run one service instance and one server worker per data directory.
+On Linux, use a private directory under the service user's home. On Windows, use a dedicated NTFS directory. The service rejects links and non-NTFS Windows data volumes, protects the directory for the current user, and holds an exclusive lifetime owner lock. Run one service instance and one server worker per data directory.
 
 Start extraction separately using its [README](../powerpoint-extraction/README.md). Its current renderer requires Linux or WSL2. Native Windows rendering fails closed. The extraction service's source-inspection confinement and rendering limitations also apply to this workflow. No cloud service is required.
 
