@@ -68,6 +68,6 @@ Errors have this shape:
 | 413 | Complete request or uploaded file exceeds its configured limit |
 | 415 | Unsupported upload format |
 | 422 | Empty upload |
-| 503 | Canonical original unavailable or temporary upstream download failure |
+| 503 | Canonical original unavailable, temporary upstream download failure, or invalid persisted metadata |
 
 Accepted processing failures appear in a 200 status response with a safe structured error. No traceback, credentials, internal endpoint, private path, or slide text appears in errors. Five consecutive transient processing failures exhaust automatic retries and leave a retryable failed operation. An extraction 429 keeps work queued and waits for capacity with capped backoff. Delete operations retain their fence and retry cleanup indefinitely with capped backoff. Default limits and timeout values are in the README.

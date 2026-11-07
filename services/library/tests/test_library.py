@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import patch
@@ -147,6 +148,12 @@ def put_source(root: Path, data: bytes = b"deck") -> Path:
     source = root / f"{uuid4()}.pptx"
     source.write_bytes(data)
     return source
+
+
+def corrupt_sqlite_deck(root: Path, deck_id: str) -> None:
+    with sqlite3.connect(root / "metadata.sqlite3") as database:
+        database.execute("UPDATE decks SET record=? WHERE id=?",
+                         ('{"private_slide_text":"never return this"}', deck_id))
 
 
 def library(root: Path, remote: Remote) -> Library:
@@ -482,10 +489,23 @@ def test_corrupt_persisted_content_returns_safe_error(tmp_path: Path) -> None:
     with TestClient(app) as client:
         accepted = client.post("/v1/decks", headers={**HEADERS, "Idempotency-Key": "upload"},
                                files={"file": ("team.pptx", b"deck")}).json()
-        app.state.library.store.db.execute("UPDATE decks SET record=? WHERE id=?",
-                                           ('{"private_slide_text":"never return this"}', accepted["deck_id"]))
-        app.state.library.store.db.commit()
+        corrupt_sqlite_deck(settings.data_dir, accepted["deck_id"])
         response = client.get(accepted["status_url"], headers=HEADERS)
         assert response.status_code == 503
         assert response.json()["error"]["code"] == "metadata_unavailable"
         assert "private_slide_text" not in response.text
+
+
+def test_startup_failure_after_store_creation_releases_owner_lock(tmp_path: Path, monkeypatch) -> None:
+    settings = Settings(tmp_path / "data", TOKEN, "http://extraction.test", EXTRACTION_TOKEN)
+
+    def fail_extraction(*args, **kwargs):
+        raise RuntimeError("injected extraction setup failure")
+
+    monkeypatch.setattr("library_service.api.Extraction", fail_extraction)
+    with pytest.raises(RuntimeError, match="injected extraction setup failure"):
+        with TestClient(create_app(settings, secure_storage=False, start_worker=False)):
+            pass
+
+    store = Store(settings.data_dir)
+    store.close()

@@ -1,17 +1,16 @@
 # Library service checks
 
-Run on Windows with Python 3.12.11 on 2026-11-07. The target module's isolated offline environment could not be initialized because the sandbox blocked Python startup and its uv cache lacked the locked `mypy==1.20.2` wheel. The final source was checked using the already-installed isolated environment at `.audit/ex2-service/.venv`, with `PYTHONPATH` pointed at `services/library/src`.
+Run on Windows with Python 3.12.11 on 2026-11-07 from `services/library/`.
 
 | Command | Result |
 | --- | --- |
-| `python -m pytest services/library/tests -q` | 11 passed, 1 Starlette deprecation warning. |
-| `python -m mypy services/library/src` | No issues in 7 source files. |
-| `python -m ruff check services/library/src services/library/tests` | All checks passed. |
+| `uv run --locked pytest -q` | 22 passed, 1 Starlette deprecation warning. |
+| `uv run --locked mypy src` | No issues in 8 source files. |
+| `uv run --locked ruff check src tests scripts` | All checks passed. |
+| `uv run --locked python scripts/check_database_workflow.py --self-check` | Driver self-check passed. |
 
-The exact interpreter was `.audit/ex2-service/.venv/Scripts/python.exe`. The equivalent target command, `uv run --locked --offline pytest -q`, could not resolve the locked mypy wheel because it was absent from the machine cache and network access is disabled.
+The tests include schema-v1 backup and upgrade, original hash preservation, pending deletion preservation, missing-database refusal, marker mismatch refusal, incomplete-marker refusal before cleanup, recovery from an interrupted upgrade using the documented backup procedure, refusal of invalid legacy records and a mismatched schema before cleanup, persisted deck ordering, due-time ties, metadata transaction rollback, paths with spaces, and owner-lock release after failed startup. Existing authenticated API and deterministic extraction tests also pass.
 
-The checks use a deterministic authenticated extraction HTTP contract. They verify upload-key replay, unchanged original checksums, crash recovery, same-revision retry after a lost response and after the automatic retry budget is exhausted, stale publication rejection, immediate download revocation, local deletion during an extraction outage, cleanup after restart, unknown-UUID deletion replay, asset integrity, bounded outbound deadlines, bounded outage retries, durable queue waiting, and safe metadata-validation errors.
-
-No real LibreOffice, live frontend workflow, Linux workflow, screenshot, video, or capacity run was performed. These results do not establish EX2 live or performance acceptance. The browser-control approval timed out, so visual UI review was unavailable.
+No live extraction workflow, browser gallery check, screenshot, Linux run, or capacity measurement was performed. These results do not establish LIBDB-1 live or performance acceptance.
 
 Current HTTPX 0.28.1 documentation was resolved and fetched through Context7 as `/encode/httpx/0.28.1`. It confirmed streamed multipart uploads and async response streaming with automatic connection cleanup.

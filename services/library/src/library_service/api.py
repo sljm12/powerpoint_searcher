@@ -179,23 +179,30 @@ def create_app(settings: Settings, transport: httpx.AsyncBaseTransport | None = 
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if secure_storage:
             private_directory(settings.data_dir)
-        store = Store(settings.data_dir)
-        extraction = Extraction(settings.extraction_url, settings.extraction_token,
-                                settings.request_timeout, settings.manifest_limit,
-                                settings.asset_limit, transport)
-        library = Library(store, extraction, settings.poll_interval, settings.retry_limit)
-        app.state.library = library
-        task = asyncio.create_task(library.run()) if start_worker else None
-        app.state.worker = task
+        store: Store | None = None
+        extraction: Extraction | None = None
+        task: asyncio.Task[None] | None = None
         try:
+            store = Store(settings.data_dir)
+            extraction = Extraction(settings.extraction_url, settings.extraction_token,
+                                    settings.request_timeout, settings.manifest_limit,
+                                    settings.asset_limit, transport)
+            library = Library(store, extraction, settings.poll_interval, settings.retry_limit)
+            app.state.library = library
+            task = asyncio.create_task(library.run()) if start_worker else None
+            app.state.worker = task
             yield
         finally:
-            if task is not None:
-                task.cancel()
-                with suppress(asyncio.CancelledError):
-                    await task
-            await extraction.close()
-            store.close()
+            try:
+                if task is not None:
+                    task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await task
+                if extraction is not None:
+                    await extraction.close()
+            finally:
+                if store is not None:
+                    store.close()
 
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(Boundary, settings=settings)

@@ -1,13 +1,13 @@
 # Switch the library between SQLite and PostgreSQL
 
-Plan only. Let an administrator choose SQLite or local PostgreSQL at startup and carry the existing library across during an offline transfer. Keep SQLite as the default. Deliver LIBDB-1, then LIBDB-2. Preserve original bytes, deck identities, operation history, and deletion fences.
+Execution plan. Let an administrator choose SQLite or local PostgreSQL at startup and carry the existing library across during an offline transfer. Keep SQLite as the default. Deliver LIBDB-1, then LIBDB-2. Preserve original bytes, deck identities, operation history, and deletion fences.
 This follows the [project constitution](../constitution.md). There are no constitutional conflicts. PostgreSQL remains optional and locally deployable. Only library-owned metadata changes backend. Extraction keeps its own storage and HTTP contract.
 
 ## How to read this
 
 One box is one unit of work. Every box names the evidence that checks it. Check a box only when its evidence exists in a test result, log, screenshot, or reviewed diff. Unchecked boxes describe future work, not completed verification.
 
-Execution uses `skills/poteto-mode/playbooks/autopilot-stack.md` from the installed pstack plugin. LIBDB-2 depends on LIBDB-1. The operator merges both PRs after verification. This planning request authorizes no implementation, PR creation, or merge.
+Execution uses `skills/poteto-mode/playbooks/autopilot-stack.md` from the installed pstack plugin. LIBDB-2 depends on LIBDB-1. The operator merges both PRs after verification. LIBDB-1 implementation is authorized; LIBDB-2, PR creation, and merge remain out of scope.
 
 Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
@@ -52,28 +52,28 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 
 **Files.**
 
-- [ ] Edit `services/library/src/library_service/store.py`, `api.py`, and `service.py` only where construction, typing, or failure handling requires it. Review `__main__.py` and preserve its single-worker behavior.
-- [ ] Create `services/library/src/library_service/metadata.py` for typed metadata access and schema lifecycle. Create `services/library/tests/test_metadata.py` and the HTTP driver named above.
-- [ ] Update `services/library/tests/test_library.py`, `README.md`, `API.md` where health or errors change, and `evidence/checks.md` with actual results.
+- [x] Edit `services/library/src/library_service/store.py`, `api.py`, and `service.py` only where construction, typing, or failure handling requires it. Review `__main__.py` and preserve its single-worker behavior.
+- [x] Create `services/library/src/library_service/metadata.py` for typed metadata access and schema lifecycle. Create `services/library/tests/test_metadata.py` and the HTTP driver named above.
+- [x] Update `services/library/tests/test_library.py`, `README.md`, `API.md` where health or errors change, and `evidence/checks.md` with actual results.
 
 **Build.**
 
-- [ ] Keep `StoredDeck`, `StoredOperation`, `Work`, and the existing `Store` workflow methods. Move connection, schema, transaction, and dialect concerns behind one small metadata boundary. Keep filesystem ownership and deck transitions in `Store`. Do not duplicate the workflow in a second store implementation.
-- [ ] Retain the three logical tables `decks`, `operations`, and `requests`, including validated JSON text records. Add service-owned schema version, a persistent library UUID, a distinct database UUID, and active transfer state. Reject unsupported versions before recovery. Keep migrations inside the library service.
-- [ ] Replace implicit `rowid` ordering with persisted numeric write order. Seed it from each existing table's rowid and advance it on replacement writes. Preserve current deck/deletion listing order and operation due-time ties, including deletion priority. Use explicit upserts without losing that order. Do not silently change listing behavior while adding a backend.
-- [ ] Bind the private data directory to the library UUID and active database UUID in an atomically written marker. Hold `owner.lock` before initialization, migration, or recovery. Only adopt a legacy schema-v1 SQLite library through a validated upgrade of that exact local database. Back it up before upgrading and test interruption recovery.
-- [ ] Before `recover()` removes incoming files or orphan originals, validate the marker, schema, database identity, and transfer state. A missing or mismatched database in an established directory must stop startup without removing files. Never create an empty SQLite database over an established library just because its database file is absent.
-- [ ] Make partial startup close database handles and release owner locks. Keep business operations atomic and preserve fence checks in the same transaction as writes. Keep existing idempotency and retry semantics.
+- [x] Keep `StoredDeck`, `StoredOperation`, `Work`, and the existing `Store` workflow methods. Move connection, schema, transaction, and dialect concerns behind one small metadata boundary. Keep filesystem ownership and deck transitions in `Store`. Do not duplicate the workflow in a second store implementation.
+- [x] Retain the three logical tables `decks`, `operations`, and `requests`, including validated JSON text records. Add service-owned schema version, a persistent library UUID, a distinct database UUID, and active transfer state. Reject unsupported versions before recovery. Keep migrations inside the library service.
+- [x] Replace implicit `rowid` ordering with persisted numeric write order. Seed it from each existing table's rowid and advance it on replacement writes. Preserve current deck/deletion listing order and operation due-time ties, including deletion priority. Use explicit upserts without losing that order. Do not silently change listing behavior while adding a backend.
+- [x] Bind the private data directory to the library UUID and active database UUID in an atomically written marker. Hold `owner.lock` before initialization, migration, or recovery. Only adopt a legacy schema-v1 SQLite library through a validated upgrade of that exact local database. Back it up before upgrading and test interruption recovery.
+- [x] Before `recover()` removes incoming files or orphan originals, validate the marker, schema, database identity, and transfer state. A missing or mismatched database in an established directory must stop startup without removing files. Never create an empty SQLite database over an established library just because its database file is absent.
+- [x] Make partial startup close database handles and release owner locks. Keep business operations atomic and preserve fence checks in the same transaction as writes. Keep existing idempotency and retry semantics.
 
 **You see.**
 
 - [ ] The existing SQLite setup still starts without new variables or dependencies. Existing deck URLs, original hashes, complete manifests, queued work, and deletion records survive the upgrade and restart. Save an upgrade receipt.
-- [ ] Starting against missing, mismatched, or incomplete metadata fails with a safe actionable error before cleanup. Save a before-and-after original-file hash inventory proving no loss.
+- [x] Starting against missing, mismatched, or incomplete metadata fails with a safe actionable error before cleanup. Save a before-and-after original-file hash inventory proving no loss.
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] Run `uv run --locked pytest -q`, `uv run --locked mypy src`, and `uv run --locked ruff check src tests scripts` from `services/library/`. Add behavior checks for legacy schema upgrade, rollback, marker adoption, mismatch rejection, ordering, resource release, and interrupted upgrade.
-- [ ] Update the test helper and direct `Store(...)` callers together. Replace the corrupt-record test's direct SQLite coupling with an explicit backend fixture operation. Keep corruption injection in tests.
+- [x] Run `uv run --locked pytest -q`, `uv run --locked mypy src`, and `uv run --locked ruff check src tests scripts` from `services/library/`. Add behavior checks for legacy schema upgrade, rollback, marker adoption, mismatch rejection, ordering, resource release, and interrupted upgrade.
+- [x] Update the test helper and direct `Store(...)` callers together. Replace the corrupt-record test's direct SQLite coupling with an explicit backend fixture operation. Keep corruption injection in tests.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on the configured `swarm workers` model at the PR head, using the boot recipe.
 

@@ -44,6 +44,12 @@ The [API contract](API.md) defines upload, operation status, retry, reprocessing
 
 Each original is immutable and named by deck UUID in private storage. A retry preserves the source revision. Reprocessing increments it, preserves the same canonical bytes, and keeps the previous complete manifest available until the replacement is validated. The library never imports extraction code or reads its database or files.
 
+The first startup creates `library.json`, which binds this data directory to its library and SQLite database UUIDs. Keep the marker, `metadata.sqlite3`, and `originals/` together in backups. Startup refuses a missing database, a mismatched marker, or incomplete initialization before it removes incoming files or orphan originals. An unmarked schema-v1 database is upgraded only after its records and original-file hashes validate. The service keeps a `metadata.sqlite3.v1-backup` copy before migration.
+
+If an upgrade stops after the marker enters `preparing`, keep the service stopped. Preserve the whole data directory, restore `metadata.sqlite3` from `metadata.sqlite3.v1-backup`, remove the incomplete `library.json`, then restart the service to retry the upgrade. Do not delete the marker or backup before checking that the backup is the matching schema-v1 database. A schema-v1 library with no originals has no stored UUID, so local files cannot prove its prior identity. Use a coordinated backup when provenance matters.
+
+If a new, empty library stops during its first initialization, preserve that directory for diagnosis and configure `LIBRARY_DATA_DIR` to a different empty directory. The interrupted directory has no coordinated backup and cannot start while its marker says `preparing`.
+
 Manifest JSON contains text, geometry, warnings, and asset metadata. It contains no image bytes or private filesystem paths. Asset links refer to authenticated library routes tied to one generation. Original embedded formats are attachments. Only PNG renditions are suitable for inline previews. Contextual crops retain their warning metadata and may contain surrounding objects or slide background.
 
 ## Verify independently
@@ -52,6 +58,7 @@ Manifest JSON contains text, geometry, warnings, and asset metadata. It contains
 uv run --locked pytest -q
 uv run --locked mypy src
 uv run --locked ruff check src tests
+uv run --locked python scripts/check_database_workflow.py --self-check
 ```
 
 These checks exercise the actual HTTP adapter against a deterministic extraction contract, interruption recovery, lost retry responses, supersession, deletion during downloads, replay of unknown-UUID deletion fences, authentication before body reads, manifest validation, and original checksums. They do not establish renderer fidelity, platform acceptance, or the initial 100-deck performance target. The complete live workflow also needs the extraction service and `frontend/`.
