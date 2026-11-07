@@ -183,10 +183,20 @@ class Store:
             self.db.execute("INSERT INTO requests VALUES (?, ?, ?, ?)", (deck_id, key, digest, str(job.job_id)))
             return job
 
-    def retry(self, identifier: UUID) -> Job:
+    def retry(self, identifier: UUID, key: str | None = None) -> Job:
         with self.transaction():
             job = self.get_job(identifier)
             deck = self._deck(str(job.deck_id))
+            digest = hashlib.sha256(f"retry:v1:{identifier}".encode()).hexdigest()
+            if key is not None:
+                previous = self.db.execute(
+                    "SELECT digest, job FROM requests WHERE deck=? AND key=?",
+                    (str(job.deck_id), key),
+                ).fetchone()
+                if previous is not None:
+                    if previous["digest"] != digest:
+                        raise ServiceError(409, "idempotency_conflict", "Idempotency key was used for different input.")
+                    return self.get_job(UUID(previous["job"]))
             if deck["current_job"] != str(identifier) or deck["revision"] != job.source_revision:
                 raise ServiceError(409, "superseded", "Job has been superseded.")
             if job.state != "failed" or job.error is None or not job.error.retryable:
@@ -195,6 +205,9 @@ class Store:
             new_job = self._new_job(job.deck_id, job.source_revision, job.attempt + 1)
             self._save_job(new_job)
             self.db.execute("UPDATE decks SET current_job=?, fence=fence+1 WHERE id=?", (str(new_job.job_id), str(job.deck_id)))
+            if key is not None:
+                self.db.execute("INSERT INTO requests VALUES (?, ?, ?, ?)",
+                                 (str(job.deck_id), key, digest, str(new_job.job_id)))
             return new_job
 
     def claim(self) -> Claim | None:

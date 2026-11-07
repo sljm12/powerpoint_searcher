@@ -279,8 +279,11 @@ def create_app(settings: Settings, *, extractor: Extractor = unavailable_extract
     @app.post("/v1/jobs/{job_id}/retry", response_model=Job, status_code=202)
     async def retry(job_id: UUID, request: Request) -> Job:
         require_ready()
+        key = request.headers.get("idempotency-key")
+        if key is not None and not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", key):
+            raise ServiceError(400, "malformed_request", "Idempotency key is invalid.")
         store: Store = request.app.state.store
-        result = store.retry(job_id)
+        result = store.retry(job_id, key)
         request.app.state.worker.wake.set()
         return result
 

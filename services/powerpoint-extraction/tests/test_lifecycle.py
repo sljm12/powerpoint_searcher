@@ -122,10 +122,13 @@ def test_failed_retry_and_timeout(tmp_path: Path) -> None:
         failure = poll(client, first["status_url"])
         assert failure["error"]["retryable"] is True
         assert "secret" not in str(failure)
-        retried = client.post(first["status_url"] + "/retry", headers=HEADERS)
+        retry_headers = {**HEADERS, "Idempotency-Key": "retry-one"}
+        assert client.post(first["status_url"] + "/retry", headers={**HEADERS, "Idempotency-Key": "bad@key"}).status_code == 400
+        retried = client.post(first["status_url"] + "/retry", headers=retry_headers)
         assert retried.status_code == 202
         assert retried.json()["job_id"] != first["job_id"]
         assert poll(client, retried.json()["status_url"])["state"] == "succeeded"
+        assert client.post(first["status_url"] + "/retry", headers=retry_headers).json()["job_id"] == retried.json()["job_id"]
         assert client.post(first["status_url"] + "/retry", headers=HEADERS).status_code == 409
 
     async def hangs(source: Path, output: Path, progress: Progress) -> ExtractionResult:
@@ -190,7 +193,11 @@ def test_restart_fences_and_atomic_generation_switch(tmp_path: Path) -> None:
     store.close()
     store = Store(root)
     assert store.get_job(first.job_id).error is not None
-    retried = store.retry(first.job_id)
+    retried = store.retry(first.job_id, "retry-key")
+    assert store.retry(first.job_id, "retry-key").job_id == retried.job_id
+    with pytest.raises(ServiceError) as retry_conflict:
+        store.retry(first.job_id, "first")
+    assert retry_conflict.value.status == 409
     current = store.claim()
     assert current is not None
     result = asyncio.run(good(current.source_path, current.output_path, lambda *args: None))

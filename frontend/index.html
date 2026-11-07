@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f4f2ec" />
+    <title>Slide library</title>
+  </head>
+  <body>
+    <main id="app" class="shell">
+      <header class="topbar">
+        <a class="brand" href="#">Slide library</a>
+        <p class="eyebrow">TEAM COLLECTION</p>
+      </header>
+      <section class="intro" aria-labelledby="page-title">
+        <p class="eyebrow">POWERPOINT ARCHIVE</p>
+        <h1 id="page-title">Find a slide worth keeping.</h1>
+        <p class="lede">Upload a deck to preserve the original and browse its slide and graphic exports.</p>
+      </section>
+      <section class="access card" aria-labelledby="access-title">
+        <div>
+          <p class="eyebrow">PRIVATE LIBRARY</p>
+          <h2 id="access-title">Connect to your library</h2>
+        </div>
+        <form id="connect-form" class="connect-form">
+          <label for="token">Library access token</label>
+          <div class="inline-field">
+            <input id="token" name="token" type="password" autocomplete="off" required />
+            <button class="button button-dark" type="submit">Connect</button>
+          </div>
+          <p class="hint">The token stays in this tab and is cleared when you close it.</p>
+        </form>
+      </section>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+      <section id="library" class="library" hidden>
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">YOUR DECKS</p>
+            <h2>Recently added</h2>
+          </div>
+          <button id="refresh" class="button button-quiet" type="button">Refresh</button>
+        </div>
+        <form id="upload-form" class="upload-card card">
+          <div class="upload-copy">
+            <span class="upload-icon" aria-hidden="true">+</span>
+            <div>
+              <h3>Add a presentation</h3>
+              <p>Upload a PowerPoint file. The original stays available for download.</p>
+            </div>
+          </div>
+          <div class="inline-field">
+            <label class="file-picker">Choose .pptx<input id="deck-file" name="file" type="file" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation" required /></label>
+            <span id="file-name" class="hint">No file selected</span>
+            <button class="button button-accent" type="submit">Upload deck</button>
+          </div>
+        </form>
+        <section id="cleanup" class="cleanup card" aria-labelledby="cleanup-title" hidden>
+          <div>
+            <p class="eyebrow">DELETION STATUS</p>
+            <h3 id="cleanup-title">Cleanup in progress</h3>
+          </div>
+          <div id="deletion-list" class="deletion-list" aria-live="polite"></div>
+        </section>
+        <div id="decks" class="deck-list"></div>
+        <p class="footnote">A completed extraction is labelled “Extracted”. Search indexing is not part of this workflow.</p>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

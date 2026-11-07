@@ -9,7 +9,7 @@ The authoritative generated response schemas are the Pydantic records in `models
 | `GET /health` | None | 200 `Health` with `ready` only |
 | `POST /v1/decks/{deck_id}/extractions` | Multipart `file`, `source_revision`, `idempotency_key` exactly once each | 202 `Job` |
 | `GET /v1/jobs/{job_id}` | None | 200 `Job` |
-| `POST /v1/jobs/{job_id}/retry` | Empty body | 202 new `Job` |
+| `POST /v1/jobs/{job_id}/retry` | Empty body; optional `Idempotency-Key` header | 202 `Job` |
 | `GET /v1/decks/{deck_id}/manifest` | Optional UUID query `generation` | 200 `Manifest` |
 | `GET /v1/assets/{asset_id}` | None | 200 bytes with safe attachment name, stored media type, byte length, and SHA-256 ETag |
 | `DELETE /v1/decks/{deck_id}` | None | 202 `Deletion` |
@@ -25,7 +25,7 @@ States are `queued`, `processing`, `succeeded`, `failed`, and `cancelled`. Stage
 
 Poll once per second initially and back off for long jobs. Honor queue saturation by retrying later. A network timeout during submission is safe to retry with the same idempotency key and identical bytes and revision. The digest includes the API processing version, revision, and exact source checksum. The same key with changed input returns 409. Duplicate input for the same current revision returns its existing job. Changing bytes without increasing revision returns 409. An older revision returns 409 unless it is the exact replay of a persisted idempotency request. A newer revision cancels older unfinished jobs and preserves the old complete generation until replacement succeeds.
 
-Retry accepts only the current failed job with `error.retryable=true`. It creates a new job and generation ID, increases `attempt`, and reuses the revision's work copy. Repeating retry on the old job returns 409. A retry against a deleted job returns 404 because deletion removes job records. An old idempotency request continues to identify the original attempt.
+Retry accepts only the current failed job with `error.retryable=true`. It creates a new job and generation ID, increases `attempt`, and reuses the revision's work copy. When supplied, `Idempotency-Key` uses the same 1 to 128 character syntax as extraction submission and binds the new job to the parent job ID. Repeating the request with that key returns the same new job, including after another attempt has become current. Reusing the key for a different request returns 409. Without the header, repeating retry on the old job returns 409. A retry against a deleted job returns 404 because deletion removes job records. An old submission idempotency request continues to identify the original attempt.
 
 ## Manifests and downloads
 

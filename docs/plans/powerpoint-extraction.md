@@ -4,7 +4,7 @@ Create searchable slide content and downloadable slide and graphic images for th
 Run on Windows and Linux without requiring Microsoft PowerPoint or cloud processing.
 Use a Python extraction library together with headless LibreOffice, subject to the rendering proof below.
 Deliver EX1, the extraction service, followed by EX2, the library integration and downloads.
-EX1 implementation is present under `services/powerpoint-extraction/`. Renderer and live HTTP evidence exists for selected fixtures and workflows. EX1 remains open because source parsing is not confined, native Windows confinement and inherited dynamic fields are unsupported, SmartArt fidelity is provisional, and representative capacity is not measured. EX2 is out of scope for the current implementation request.
+EX1 implementation is present under `services/powerpoint-extraction/`. Renderer and live HTTP evidence exists for selected fixtures and workflows. EX1 remains open because source parsing is not confined, native Windows confinement and inherited dynamic fields are unsupported, SmartArt fidelity remains provisional, and representative 100-deck capacity and memory are unmeasured. EX2 can use the verified API v1 contract, but these EX1 limits still constrain platform acceptance.
 
 ## How to read this
 
@@ -131,27 +131,30 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 
 ## Connect library processing and graphic downloads (EX2)
 
+Implementation status: the library service, frontend, API contracts, retry idempotency, and module checks are present. The live workflow, visual review, Windows/Linux integration, and capacity evidence remain open; EX2 is not fully accepted.
+
 **Depends on.** EX1.
 
 **Files.**
 
-- [ ] Create the library service's implementation, tests, API contract, and README in `services/library/`.
-- [ ] Create the upload, status, preview, and download client code and checks in `frontend/`.
+- [x] Create the library service's implementation, tests, API contract, and README in `services/library/`.
+- [x] Create the upload, status, preview, and download client code and checks in `frontend/`.
 - [ ] Add repository-wide local orchestration only when needed. Document service URLs and required local dependencies.
 
 **Build.**
 
-- [ ] Preserve canonical uploaded decks in the library service. Supply extraction with deck bytes and stable identity over authenticated HTTP.
-- [ ] Keep extraction's work copy private. Document its retention and deletion along with all derived outputs.
-- [ ] Poll extraction jobs with outbound timeouts and bounded retries for safe operations. Distinguish extraction completion from full indexing readiness.
-- [ ] Make current generation manifests and asset bytes available through service APIs. Expose no private paths and do not send full image bytes in JSON manifests.
-- [ ] Add original-deck, slide PNG, original-picture, and rendered-graphic downloads. Show source filename, slide number, export type, and warnings.
-- [ ] Display contextual crops with a warning that surrounding objects or slide background may be included. Do not label those images as isolated graphics.
-- [ ] Show text and visual content to the future indexing consumer through the manifest API. Leave embedding and retrieval implementation to a separate feature plan.
-- [ ] Coordinate reprocessing and deletion across the library and extraction services using durable operations and generation checks.
-- [ ] Keep a deck in a processing state until all required configured indexing steps finish. In this slice, label completed extraction as extracted rather than implying searchable readiness.
-- [ ] Add a keyboard-accessible upload and download flow with labelled controls and readable failures.
-- [ ] Document backup and restore of canonical originals, extraction metadata, derived outputs, deletion fences, and pending operations.
+- [x] Preserve canonical uploaded decks in the library service. Supply extraction with deck bytes and stable identity over authenticated HTTP.
+- [x] Keep extraction's work copy private. Document its retention and deletion along with all derived outputs.
+- [x] Poll extraction jobs with outbound timeouts and bounded retries for safe operations. Distinguish extraction completion from full indexing readiness.
+- [x] Make extraction retry requests idempotent so a lost HTTP response cannot hide the new job ID.
+- [x] Make current generation manifests and asset bytes available through service APIs. Expose no private paths and do not send full image bytes in JSON manifests.
+- [x] Add original-deck, slide PNG, original-picture, and rendered-graphic downloads. Show source filename, slide number, export type, and warnings.
+- [x] Display contextual crops with a warning that surrounding objects or slide background may be included. Do not label those images as isolated graphics.
+- [x] Show text and visual content to the future indexing consumer through the manifest API. Leave embedding and retrieval implementation to a separate feature plan.
+- [x] Coordinate reprocessing and deletion across the library and extraction services using durable operations and generation checks.
+- [x] Keep a deck in a processing state until all required configured indexing steps finish. In this slice, label completed extraction as extracted rather than implying searchable readiness.
+- [x] Add a keyboard-accessible upload and download flow with labelled controls and readable failures.
+- [x] Document backup and restore of canonical originals, extraction metadata, derived outputs, deletion fences, and pending operations.
 
 **You see.**
 
@@ -161,10 +164,10 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] Check the library-to-extraction contract for submission, polling, failures, downloads, supersession, and deletion.
+- [x] Check the library-to-extraction contract for submission, polling, failures, downloads, supersession, and deletion.
 - [ ] Check the TypeScript client's runtime validation, status presentation, warning labels, and keyboard operation.
-- [ ] Check deletion retries, stale consumer writes, partial service outages, and downloads attempted after deletion.
-- [ ] Run each affected module's documented checks and save the results.
+- [x] Check deletion retries, stale consumer writes, partial service outages, and downloads attempted after deletion.
+- [x] Run each affected module's documented checks and save the results.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on the configured `swarm workers` model at the PR head, when running the pstack PR workflow. Run the full workflow locally.
 
