@@ -1,4 +1,5 @@
-import { LibraryClient, type Asset, type Deck, type DeckState, type Manifest, type Occurrence } from "./client";
+import { LibraryClient, type Deck, type DeckState } from "./client";
+import { openGallery, type Gallery } from "./gallery";
 import "./style.css";
 
 function requiredElement<T extends HTMLElement>(selector: string): T {
@@ -21,7 +22,8 @@ const refreshButton = requiredElement<HTMLButtonElement>("#refresh");
 
 let client: LibraryClient | null = null;
 let refreshTimer: number | undefined;
-let imageUrls: string[] = [];
+let gallery: Gallery | null = null;
+const libraryPage = requiredElement<HTMLElement>("#app");
 
 function showStatus(message: string, kind: "info" | "error" = "info"): void {
   status.textContent = message;
@@ -61,100 +63,6 @@ function stateLabel(state: DeckState): string {
   }
 }
 
-function assetFor(manifest: Manifest, localId: string | null): Asset | undefined {
-  return localId === null ? undefined : manifest.assets.find((asset) => asset.local_id === localId);
-}
-
-function clearImages(): void {
-  for (const url of imageUrls) URL.revokeObjectURL(url);
-  imageUrls = [];
-}
-
-async function showPreview(deck: Deck, article: HTMLElement): Promise<void> {
-  if (client === null) return;
-  const preview = article.querySelector<HTMLElement>(".preview-area");
-  if (!preview) return;
-  preview.replaceChildren(el("p", "hint", "Loading slide previews…"));
-  const manifest = await client.manifest(deck);
-  const list = el("div", "slide-grid");
-  for (const slide of manifest.content.slides) {
-    const slideCard = el("article", "slide-card");
-    slideCard.append(el("h4", "slide-label", `Slide ${slide.source.number}${slide.source.hidden ? " · Hidden" : ""}`));
-    const asset = assetFor(manifest, slide.preview.asset_local_id);
-    if (asset) {
-      slideCard.append(actionButton("Show slide preview", async (button) => {
-        const existing = slideCard.querySelector<HTMLImageElement>(".slide-image");
-        if (existing) {
-          URL.revokeObjectURL(existing.src);
-          existing.remove();
-          button.textContent = "Show slide preview";
-          return;
-        }
-        const image = el("img", "slide-image");
-        image.alt = `Slide ${slide.source.number} preview from ${deck.filename}`;
-        image.src = await client?.image(asset.download_url) ?? "";
-        imageUrls.push(image.src);
-        slideCard.insertBefore(image, slideCard.querySelector(".download-slide"));
-        button.textContent = "Hide slide preview";
-      }, "button button-small"));
-      const download = actionButton("Download slide PNG", () => client?.download(asset.download_url, `${deck.filename}-slide-${slide.source.number}.png`), "button button-small");
-      download.classList.add("download-slide");
-      slideCard.append(download);
-    }
-    for (const occurrence of slide.occurrences) slideCard.append(renderOccurrence(deck, manifest, occurrence));
-    list.append(slideCard);
-  }
-  preview.replaceChildren(list);
-}
-
-function renderOccurrence(deck: Deck, manifest: Manifest, occurrence: Occurrence): HTMLElement {
-  const card = el("div", "graphic-row");
-  const heading = el("div", "graphic-heading");
-  heading.append(el("strong", "graphic-name", occurrence.source.source_name || occurrence.source.kind));
-  heading.append(el("span", "graphic-kind", occurrence.source.kind.replaceAll("_", " ")));
-  card.append(heading);
-  if (occurrence.source.alt_text) card.append(el("p", "graphic-text", `Alt text: ${occurrence.source.alt_text}`));
-  if (occurrence.source.text) card.append(el("p", "graphic-text", occurrence.source.text));
-
-  const rendition = occurrence.rendition;
-  const rendered = assetFor(manifest, rendition.asset_local_id);
-  if (rendered) {
-    const label = rendition.method === "slide_crop" ? "Contextual crop" : rendition.method === "libreoffice_group" ? "Rendered group" : "Rendered graphic";
-    if (rendition.method === "slide_crop") {
-      card.append(el("p", "warning", "Slide crop. It may include surrounding objects or the slide background. It is not an isolated graphic."));
-    }
-    for (const warning of rendition.warnings) card.append(el("p", "warning", warning.message));
-    card.append(el("p", "hint", `Slide ${occurrence.source.slide} · Export method: ${rendition.method} · ${rendered.media_type}`));
-    card.append(actionButton(`Download ${label.toLowerCase()}`, () => client?.download(rendered.download_url, `${deck.filename}-slide-${occurrence.source.slide}-${label.toLowerCase().replaceAll(" ", "-")}.png`), "button button-small"));
-    card.append(actionButton("Show preview", async () => {
-      const prior = card.querySelector<HTMLImageElement>(".graphic-image");
-      if (prior) {
-        URL.revokeObjectURL(prior.src);
-        prior.remove();
-        return;
-      }
-      const image = el("img", "graphic-image");
-      image.alt = `${label} for ${occurrence.source.source_name}, slide ${occurrence.source.slide}`;
-      image.src = await client?.image(rendered.download_url) ?? "";
-      imageUrls.push(image.src);
-      card.append(image);
-    }, "button button-small"));
-  }
-  if (occurrence.original_available) {
-    const original = assetFor(manifest, occurrence.original_asset_local_id);
-    if (original) card.append(actionButton("Download original embedded picture", () => client?.download(original.download_url, `${deck.filename}-slide-${occurrence.source.slide}-original.${extension(original.media_type)}`), "button button-small"));
-  }
-  for (const warning of manifest.warnings.filter((item) => item.affected_occurrence_ids.includes(occurrence.source.id))) {
-    card.append(el("p", "warning", warning.message));
-  }
-  return card;
-}
-
-function extension(mediaType: string): string {
-  const known: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/tiff": "tiff", "image/bmp": "bmp", "image/svg+xml": "svg" };
-  return known[mediaType] ?? "bin";
-}
-
 async function renderDecks(force = false): Promise<void> {
   if (client === null) return;
   const [decks, deletions] = await Promise.all([client.decks(), client.deletions()]);
@@ -170,7 +78,6 @@ async function renderDecks(force = false): Promise<void> {
     scheduleRefresh(decks, pendingDeletions.length);
     return;
   }
-  clearImages();
   deckList.replaceChildren();
   for (const deck of decks) {
     const article = el("article", "deck-card card");
@@ -206,7 +113,19 @@ async function renderDecks(force = false): Promise<void> {
       article.append(actionButton("Download original deck", () => client?.download(deck.original_url, deck.filename), "button button-dark"));
       if (deck.generation_id !== null) {
         const previous = deck.state !== "extracted";
-        article.append(actionButton(previous ? "View previous generation" : "View slides and graphics", () => showPreview(deck, article), "button button-quiet"));
+        const galleryButton = actionButton(previous ? "View previous generation" : "View slides and graphics", (opener) => {
+          if (client === null) return;
+          gallery?.close();
+          gallery = openGallery({ client, deck, opener, libraryPage, onClose: () => {
+            gallery = null;
+            if (!opener.isConnected) {
+              const replacement = deckList.querySelector<HTMLButtonElement>(`[data-gallery-deck="${deck.deck_id}"]`);
+              (replacement ?? refreshButton).focus({ preventScroll: true });
+            }
+          } });
+        }, "button button-quiet");
+        galleryButton.dataset.galleryDeck = deck.deck_id;
+        article.append(galleryButton);
       }
       if (deck.state === "extracted" && deck.generation_id !== null) {
         article.append(actionButton("Reprocess deck", async () => {
@@ -224,11 +143,13 @@ async function renderDecks(force = false): Promise<void> {
     } else {
       article.append(el("p", "hint", "Downloads are disabled while cleanup finishes."));
     }
-    const preview = el("div", "preview-area");
-    article.append(preview);
     deckList.append(article);
   }
   if (decks.length === 0) deckList.append(el("div", "empty-state card", "Your library is ready for its first deck."));
+  if (gallery !== null) {
+    const openDeck = decks.find((deck) => deck.deck_id === gallery?.deckId);
+    if (!openDeck || openDeck.state === "deleting" || openDeck.state === "deleted" || openDeck.generation_id !== gallery.generationId) gallery.close();
+  }
   scheduleRefresh(decks, pendingDeletions.length);
 }
 

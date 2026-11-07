@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Slide gallery checks</title></head>
+<body>
+  <main id="fixture-library"><button id="open-gallery">Open fixture gallery</button></main>
+  <output id="test-result" style="position:fixed;bottom:8px;left:8px;z-index:10;background:white;padding:8px;border:1px solid #ccc;font:12px sans-serif">Running gallery checks...</output>
+  <script type="module">
+    import { openGallery } from "/src/gallery.ts";
+    import "/src/style.css";
+    const result = document.querySelector("#test-result");
+    const libraryPage = document.querySelector("#fixture-library");
+    const opener = document.querySelector("#open-gallery");
+    const downloads = [];
+    const deck = { deck_id: "fixture", generation_id: "generation", filename: "Team workshop.pptx", original_url: "/original", state: "extracted" };
+    const asset = (id) => ({ local_id: id, download_url: `/${id}`, media_type: "image/png" });
+    const occurrence = {
+      source: { id: "shape-1", slide: 1, source_name: "Workshop diagram", kind: "shape", alt_text: "A simple process", text: "Explore, discuss, decide" },
+      rendition: { asset_local_id: "graphic", method: "slide_crop", warnings: [{ message: "Fixture warning preserved." }] },
+      original_available: true, original_asset_local_id: "original-picture",
+    };
+    const manifest = {
+      source_revision: 1,
+      content: { slides: Array.from({ length: 12 }, (_, i) => ({
+        source: { number: i + 1, hidden: i === 3 },
+        preview: { asset_local_id: i === 11 ? null : `slide-${i + 1}`, warnings: [] },
+        occurrences: i === 0 ? [occurrence] : [],
+      })) },
+      assets: [...Array.from({ length: 11 }, (_, i) => asset(`slide-${i + 1}`)), asset("graphic"), asset("original-picture")],
+      warnings: [],
+    };
+    function svg(path) {
+      const slide = path.replace("/slide-", "");
+      return `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540"><rect width="960" height="540" fill="#f5f1e6"/><rect x="0" width="28" height="540" fill="#315f4f"/><text x="70" y="92" font-family="sans-serif" font-size="22" fill="#315f4f">TEAM WORKSHOP</text><text x="70" y="200" font-family="sans-serif" font-size="54" font-weight="bold" fill="#244238">A better way to work</text><text x="70" y="260" font-family="sans-serif" font-size="26" fill="#68736f">Explore ideas. Share what matters.</text><circle cx="150" cy="390" r="55" fill="#c7e97b"/><circle cx="330" cy="390" r="55" fill="#91b9a6"/><circle cx="510" cy="390" r="55" fill="#315f4f"/><text x="850" y="490" font-family="sans-serif" font-size="20" fill="#68736f">${slide}</text></svg>`;
+    }
+    const client = {
+      manifest: async () => manifest,
+      image: async (path) => URL.createObjectURL(new Blob([svg(path)], { type: "image/svg+xml" })),
+      download: async (path, name) => downloads.push({ path, name }),
+    };
+    let current;
+    const open = (overrides = {}) => current = openGallery({ client: { ...client, ...overrides }, deck, opener, libraryPage, onClose() {} });
+    const assert = (condition, message) => { if (!condition) throw new Error(message); };
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
+    const click = async (selector) => { const node = document.querySelector(selector); assert(node, `Missing ${selector}`); node.click(); await tick(); };
+    const byText = (text) => [...document.querySelectorAll("button")].find((button) => button.textContent === text);
+    try {
+      open();
+      await tick();
+      assert(libraryPage.hidden, "The library hides while the gallery is open.");
+      assert(document.querySelectorAll(".slide-card").length === 12, "The gallery lists every slide.");
+      assert(document.querySelectorAll(".slide-card img").length === 11, "Slide previews load without another click.");
+      assert(document.querySelector(".slide-card:last-child").textContent.includes("Preview unavailable"), "Missing previews have a placeholder.");
+      assert(!document.querySelector(".graphic-row"), "Components are absent from the gallery.");
+      const columns = document.querySelector("select");
+      columns.value = "2";
+      columns.dispatchEvent(new Event("change"));
+      assert(document.querySelector(".slide-grid").style.getPropertyValue("--slide-columns") === "2", "Changing row size updates the grid.");
+      await click(".slide-select");
+      assert(document.querySelector("dialog").open, "Clicking a slide opens a modal.");
+      assert(document.querySelectorAll(".graphic-row").length === 1, "The modal contains the selected slide's components.");
+      assert(document.querySelector("dialog").textContent.includes("Fixture warning preserved."), "Component warnings remain visible.");
+      byText("Download slide PNG").click();
+      byText("Download original embedded picture").click();
+      await tick();
+      assert(downloads.some(({ path }) => path === "/slide-1") && downloads.some(({ path }) => path === "/original-picture"), "Slide and original component downloads retain their routes.");
+      byText("Close slide").click();
+      await tick();
+      assert(!document.querySelector("dialog").open, "The modal closes.");
+      assert(document.activeElement === document.querySelector(".slide-select"), "Focus returns to the selected slide.");
+      current.close();
+      assert(!libraryPage.hidden && document.activeElement === opener, "Returning restores the library and focus.");
+      let attempts = 0;
+      open({ manifest: async () => { attempts += 1; if (attempts === 1) throw new Error("Fixture connection failure"); return manifest; } });
+      await tick();
+      assert(document.querySelector(".gallery-feedback").textContent.includes("Fixture connection failure"), "Manifest failures appear in the gallery.");
+      byText("Retry loading slides").click();
+      await tick();
+      assert(document.querySelectorAll(".slide-card").length === 12, "Retry recovers the slide gallery.");
+      current.close();
+      let resolveImage;
+      const lateUrl = URL.createObjectURL(new Blob([svg("late")], { type: "image/svg+xml" }));
+      open({ image: () => new Promise((resolve) => { resolveImage = resolve; }) });
+      await tick();
+      current.close();
+      resolveImage(lateUrl);
+      await tick();
+      assert(!document.querySelector(".gallery"), "A late image response does not reopen the gallery.");
+      let revoked = false;
+      try { await fetch(lateUrl); } catch { revoked = true; }
+      assert(revoked, "Late image object URLs are revoked.");
+      const integration = document.createElement("iframe");
+      integration.title = "Library integration checks";
+      integration.style.cssText = "position:fixed;left:-10000px;width:1000px;height:800px";
+      const deckId = "11111111-1111-4111-8111-111111111111";
+      let decks = [{ ...deck, deck_id: deckId, generation_id: "first", byte_length: 42, source_revision: 1, warnings: [] }];
+      integration.fixtureClient = { ...client, decks: async () => decks, deletions: async () => [] };
+      const page = await (await fetch("/")).text();
+      integration.srcdoc = page.replace('<script type="module" src="/src/main.ts"></scr' + 'ipt>', `<script type="module">
+        import { LibraryClient } from "/src/client.ts";
+        Object.assign(LibraryClient.prototype, window.frameElement.fixtureClient);
+        await import("/src/main.ts");
+        window.frameElement.dataset.ready = "true";
+      </scr` + `ipt>`);
+      document.body.append(integration);
+      async function waitFor(condition, message) {
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+          if (condition()) return;
+          await tick();
+        }
+        throw new Error(message);
+      }
+      try {
+        await waitFor(() => integration.dataset.ready === "true", "The library integration fixture starts.");
+        const page = integration.contentDocument;
+        page.querySelector("#token").value = "fixture-token-".repeat(4);
+        page.querySelector("#connect-form").dispatchEvent(new Event("submit", { cancelable: true }));
+        await waitFor(() => page.querySelector("[data-gallery-deck]"), "Connecting loads the deck list.");
+        page.querySelector("[data-gallery-deck]").click();
+        await waitFor(() => page.querySelector(".gallery .slide-card"), "The deck action opens its gallery.");
+        decks = [{ ...decks[0], generation_id: "second" }];
+        page.querySelector("#refresh").click();
+        await waitFor(() => !page.querySelector(".gallery"), "Generation changes close the old gallery.");
+        assert(page.activeElement === page.querySelector("[data-gallery-deck]"), "Generation changes restore focus to the replacement deck button.");
+        page.querySelector("[data-gallery-deck]").click();
+        await waitFor(() => page.querySelector(".gallery"), "The replacement generation opens.");
+        decks = [];
+        page.querySelector("#refresh").click();
+        await waitFor(() => !page.querySelector(".gallery"), "Removing a deck closes its gallery.");
+        assert(page.activeElement === page.querySelector("#refresh"), "Removed decks restore focus to Refresh.");
+      } finally {
+        integration.remove();
+      }
+      result.textContent = "PASS: gallery, previews, columns, modal, downloads, warnings, retry, focus, async cleanup, library integration";
+      result.dataset.result = "pass";
+      open();
+    } catch (error) {
+      result.textContent = `FAIL: ${error.message}`;
+      result.dataset.result = "fail";
+      console.error(error);
+    }
+    opener.addEventListener("click", () => open());
+  </script>
+</body>
+</html>
