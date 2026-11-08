@@ -32,6 +32,48 @@ uv run python -m library_service
 
 The service listens on `127.0.0.1:8000`. `LIBRARY_HOST` and `LIBRARY_PORT` change that listener. The library can start when extraction is unavailable. Accepted work remains durable and temporary network failures retry with bounded backoff. After five consecutive processing failures, status becomes `failed` with an actionable retry. A full extraction queue keeps accepted work queued with capped backoff. Deletion continues retrying until both local and extraction cleanup complete.
 
+## Use PostgreSQL
+
+SQLite remains the default. Install Psycopg 3 with its binary distribution only when you select PostgreSQL:
+
+```sh
+uv sync --locked --extra postgres
+export LIBRARY_DB_BACKEND=postgresql
+export LIBRARY_POSTGRES_DSN="$VECTOR_DB"
+```
+
+The lock pins Psycopg 3.3.8 and its binary distribution. On Windows PowerShell, run `uv sync --locked --extra postgres`, set `$env:LIBRARY_DB_BACKEND = 'postgresql'`, and set `$env:LIBRARY_POSTGRES_DSN` from your protected environment. The example `set_db.bat` names its connection setting `VECTOR_DB`. Do not put the connection string in a command argument or commit it.
+
+Use a dedicated local PostgreSQL 18 database. The library owns the fixed `powerpoint_library` schema and refuses databases that contain other user tables or a schema bound to another library. Give the service role `CONNECT` and `CREATE` on the database. PostgreSQL owns the schema and its tables after first startup. PostgreSQL uses a 5 second connection timeout, a 5 second statement timeout, a 1 second lock timeout, TCP keepalives, and a 5 second TCP user timeout. The service holds a nonblocking database session lock for its lifetime. It does not reconnect after it loses that session.
+
+Set `LIBRARY_DATA_DIR` in both database modes. The root marker binds the data directory to the library and the selected database. A PostgreSQL marker also binds the database to the canonical data-root path. Keep the marker and originals together. To move a PostgreSQL library, transfer it to SQLite, move the complete root, then transfer it to a fresh PostgreSQL database at the new path.
+
+The service returns HTTP 503 with code `storage_unavailable` when storage fails. `/health` reports `ready=false` when storage is unavailable or the worker has stopped. Restart the service after a storage failure. Repeat mutations with their original idempotency key after restart.
+
+## Transfer the existing library
+
+Before transfer, stop the library and extraction services, disconnect the frontend, and take a coordinated backup of the library and extraction data directories. The command checks the library owner lock. The `--confirm-extraction-stopped` flag records the operator's confirmation for the extraction service and frontend.
+
+From `services/library/`, transfer SQLite metadata to PostgreSQL with:
+
+```powershell
+uv run --locked --extra postgres python -m library_service.migrate --target-backend postgresql --confirm-extraction-stopped
+```
+
+The command reads `LIBRARY_DATA_DIR` and `LIBRARY_POSTGRES_DSN` from the environment. It prints only the row counts and completion status. Restart the library with `LIBRARY_DB_BACKEND=postgresql` after the command succeeds.
+
+To transfer the current PostgreSQL library back to SQLite, keep `LIBRARY_POSTGRES_DSN` set and run:
+
+```powershell
+uv run --locked --extra postgres python -m library_service.migrate --target-backend sqlite --confirm-extraction-stopped
+```
+
+Restart the library with `LIBRARY_DB_BACKEND=sqlite`. The command archives an earlier inactive SQLite file as `metadata.sqlite3.inactive.<database-id>` and creates a fresh SQLite database. It never reactivates that older snapshot.
+
+The command writes `library-transfer.json` as a durable journal and `metadata-transfer-<id>.json` as a private metadata backup. Keep both until you verify the transfer. If the command stops before it reports success, keep both services stopped and rerun the same command with the same target. Normal library startup refuses an incomplete transfer. Do not edit the marker or delete the journal to force startup. Once the journal records `source_sealed`, finish the transfer or restore a coordinated backup. The source database remains sealed as an inactive backup after a successful transfer.
+
+Use a fresh, empty PostgreSQL database as a target. A populated PostgreSQL target fails preflight and leaves the active source untouched. The command verifies all deck, operation, and request rows, references, record hashes, and original file hashes. It keeps the same originals and does not submit extraction work again. The extraction service's data is not copied or changed by the transfer.
+
 On Linux, use a private directory under the service user's home. On Windows, use a dedicated NTFS directory. The service rejects links and non-NTFS Windows data volumes, protects the directory for the current user, and holds an exclusive lifetime owner lock. Run one service instance and one server worker per data directory.
 
 Start extraction separately using its [README](../powerpoint-extraction/README.md). Its current renderer requires Linux or WSL2. Native Windows rendering fails closed. The extraction service's source-inspection confinement and rendering limitations also apply to this workflow. No cloud service is required.
@@ -74,3 +116,5 @@ Retain the newest deletion identities separately from older content snapshots. C
 To restore, stop both services and preserve their current data directories before replacing them. Restore both snapshots. Start the services on loopback without reconnecting the frontend. Replay every deletion UUID recorded after the snapshot through the authenticated library `DELETE /v1/decks/{deck_id}` route. Wait for each deletion status to become `deleted`. Repeated deletion is safe. The library resumes pending extraction and cleanup operations at startup. Reconnect the frontend only after the newest deletion fences and pending cleanup have converged. If the newest deletion export is unavailable, an older backup cannot safely be exposed as the active library.
 
 The library's canonical copy remains until deletion is fenced locally. The cleanup worker removes it before waiting for extraction, even during an extraction outage. Extraction retains a private work copy for retries and all derived assets until its deletion completes. There is no third copy of derivatives in the library. Retired extraction generations can make an older open preview unavailable, so clients must refresh the whole manifest after a generation change.
+
+PostgreSQL WAL, inactive database copies, and database backups have separate retention. They do not inherit SQLite's `secure_delete` behavior. Coordinate their retention with the original-file and extraction backups.

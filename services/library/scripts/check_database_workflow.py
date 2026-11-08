@@ -4,6 +4,8 @@ import argparse
 import hashlib
 import json
 import os
+import subprocess
+import sys
 import time
 import uuid
 from collections.abc import Mapping
@@ -100,17 +102,34 @@ def delete_deck(base: str, token: str, deck_id: str, timeout: float) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Drive the library HTTP upload, retry, reprocess, and deletion workflow.")
+    parser = argparse.ArgumentParser(description="Drive library HTTP workflows and offline database checks.")
     parser.add_argument("--self-check", action="store_true")
     parser.add_argument("--base-url", default=os.environ.get("LIBRARY_URL", "http://127.0.0.1:8000"))
     parser.add_argument("--token", default=os.environ.get("LIBRARY_TOKEN"))
     parser.add_argument("--deck", type=Path, help="Synthetic PPTX used for a complete workflow")
     parser.add_argument("--verify-after-restart", help="Deck UUID whose original to check after a manual service restart")
+    parser.add_argument("--probe-storage-unavailable", action="store_true",
+                        help="Assert /health reports not ready after an operator-induced storage outage")
+    parser.add_argument("--transfer-to-backend", choices=("sqlite", "postgresql"),
+                        help="Run the offline metadata transfer after library and extraction are stopped")
     parser.add_argument("--timeout", type=float, default=300)
     args = parser.parse_args()
     if args.self_check:
         self_check()
         print("workflow driver self-check passed")
+        return 0
+    if args.transfer_to_backend:
+        subprocess.run([sys.executable, "-m", "library_service.migrate",
+                        "--target-backend", args.transfer_to_backend,
+                        "--confirm-extraction-stopped"], check=True)
+        print(json.dumps({"transfer": "complete", "target_backend": args.transfer_to_backend}))
+        return 0
+    if args.probe_storage_unavailable:
+        status, response = request(args.base_url, args.token or "", "GET", "/health")
+        value = json.loads(response)
+        if status != 503 or not isinstance(value, dict) or value.get("ready") is not False:
+            raise RuntimeError("Health did not report storage unavailable as expected")
+        print(json.dumps({"health": "unavailable", "status": status}))
         return 0
     if not args.token:
         parser.error("Set LIBRARY_TOKEN or pass --token")

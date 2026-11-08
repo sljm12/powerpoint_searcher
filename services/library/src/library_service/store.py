@@ -62,7 +62,8 @@ class Work(Record):
 
 
 class Store:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, backend: Literal["sqlite", "postgresql"] = "sqlite",
+                 dsn: str | None = None) -> None:
         self.root = root.resolve()
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.lock = threading.RLock()
@@ -83,7 +84,7 @@ class Store:
             raise RuntimeError("Library data directory already has an owner") from None
         self.metadata: Metadata | None = None
         try:
-            self.metadata = Metadata(self.root, self._validate_legacy_records)
+            self.metadata = Metadata(self.root, self._validate_legacy_records, backend, dsn)
             for name in ("incoming", "originals"):
                 (self.root / name).mkdir(exist_ok=True, mode=0o700)
             self.recover()
@@ -117,6 +118,9 @@ class Store:
                 self.lock_file.seek(0)
                 msvcrt.locking(self.lock_file.fileno(), msvcrt.LK_UNLCK, 1)
             self.lock_file.close()
+
+    def storage_ready(self) -> bool:
+        return self.metadata is not None and self.metadata.check_health()
 
     def source_path(self, deck_id: UUID) -> Path:
         return self.root / "originals" / f"{deck_id}.pptx"

@@ -197,6 +197,29 @@ def test_upload_idempotency_restart_and_complete_generation(tmp_path: Path) -> N
     asyncio.run(run())
 
 
+def test_upload_and_deletion_survive_restart_on_each_backend(
+        tmp_path: Path, database_backend: tuple[str, str | None]) -> None:
+    backend, dsn = database_backend
+    root = tmp_path / "data"
+    source = put_source(tmp_path, b"shared backend fixture")
+    store = Store(root, backend, dsn)
+    accepted = store.upload(source, "team.pptx", "shared-backend-upload")
+    original, filename, checksum = store.original(accepted.deck_id)
+    store.delete(accepted.deck_id)
+    store.close()
+
+    reopened = Store(root, backend, dsn)
+    try:
+        with pytest.raises(ServiceError) as deleted:
+            reopened.original(accepted.deck_id)
+        assert deleted.value.status == 410
+        assert any(item.deck_id == accepted.deck_id and item.state in ("deleting", "deleted")
+                   for item in reopened.deletions())
+        assert filename == "team.pptx" and checksum == hashlib.sha256(original).hexdigest()
+    finally:
+        reopened.close()
+
+
 def test_retry_recovers_lost_response_without_new_revision_or_duplicate_attempt(tmp_path: Path) -> None:
     async def run() -> None:
         remote = Remote()

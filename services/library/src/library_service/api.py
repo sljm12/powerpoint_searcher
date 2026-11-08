@@ -11,7 +11,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal, cast
 from urllib.parse import quote, urlsplit
 from uuid import UUID, uuid4
 
@@ -26,6 +26,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .extraction import Extraction
 from .models import Accepted, Deck, DeletionStatus, Manifest, Operation, ServiceError
+from .metadata import StorageUnavailable
 from .service import Library
 from .store import Store
 
@@ -45,6 +46,8 @@ class Settings:
     poll_interval: float = 1
     retry_limit: int = 5
     allowed_origins: tuple[str, ...] = ()
+    database_backend: Literal["sqlite", "postgresql"] = "sqlite"
+    postgres_dsn: str | None = None
 
     def __post_init__(self) -> None:
         if any(len(token.encode()) < 32 or not token.isascii() or any(ord(c) < 33 or ord(c) > 126 for c in token)
@@ -60,16 +63,25 @@ class Settings:
             raise ValueError("Service limits must be positive")
         if "*" in self.allowed_origins:
             raise ValueError("Configure exact frontend origins")
+        if self.database_backend not in ("sqlite", "postgresql"):
+            raise ValueError("LIBRARY_DB_BACKEND must be sqlite or postgresql")
+        if self.database_backend == "postgresql" and not self.postgres_dsn:
+            raise ValueError("Set LIBRARY_POSTGRES_DSN when LIBRARY_DB_BACKEND=postgresql")
+        if self.database_backend == "sqlite" and self.postgres_dsn:
+            raise ValueError("LIBRARY_POSTGRES_DSN requires LIBRARY_DB_BACKEND=postgresql")
 
     @classmethod
     def from_environment(cls) -> Settings:
         root = os.environ.get("LIBRARY_DATA_DIR")
         if not root:
             raise ValueError("Set LIBRARY_DATA_DIR to a dedicated private directory")
+        backend = os.environ.get("LIBRARY_DB_BACKEND", "sqlite").strip().lower()
         return cls(data_dir=Path(root), token=os.environ.get("LIBRARY_TOKEN", ""),
                    extraction_url=os.environ.get("EXTRACTION_URL", "http://127.0.0.1:8001"),
                    extraction_token=os.environ.get("EX1_TOKEN", ""),
-                   allowed_origins=tuple(origin.strip() for origin in os.environ.get("LIBRARY_ORIGINS", "").split(",") if origin.strip()))
+                   allowed_origins=tuple(origin.strip() for origin in os.environ.get("LIBRARY_ORIGINS", "").split(",") if origin.strip()),
+                   database_backend=cast(Literal["sqlite", "postgresql"], backend),
+                   postgres_dsn=os.environ.get("LIBRARY_POSTGRES_DSN"))
 
 
 def private_directory(root: Path) -> None:
@@ -183,7 +195,7 @@ def create_app(settings: Settings, transport: httpx.AsyncBaseTransport | None = 
         extraction: Extraction | None = None
         task: asyncio.Task[None] | None = None
         try:
-            store = Store(settings.data_dir)
+            store = Store(settings.data_dir, settings.database_backend, settings.postgres_dsn)
             extraction = Extraction(settings.extraction_url, settings.extraction_token,
                                     settings.request_timeout, settings.manifest_limit,
                                     settings.asset_limit, transport)
@@ -216,6 +228,12 @@ def create_app(settings: Settings, transport: httpx.AsyncBaseTransport | None = 
     async def service_error(request: Request, error: ServiceError) -> JSONResponse:
         return error_response(error, request.state.request_id)
 
+    @app.exception_handler(StorageUnavailable)
+    async def storage_error(request: Request, error: StorageUnavailable) -> JSONResponse:
+        return error_response(ServiceError(503, "storage_unavailable",
+                                           "Library storage is unavailable. Restart the service and retry the keyed request."),
+                             request.state.request_id)
+
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, error: RequestValidationError) -> JSONResponse:
         return error_response(ServiceError(400, "malformed_request", "Request parameters are invalid."), request.state.request_id)
@@ -228,7 +246,8 @@ def create_app(settings: Settings, transport: httpx.AsyncBaseTransport | None = 
     @app.get("/health")
     async def health(request: Request) -> dict[str, bool]:
         task = request.app.state.worker
-        return {"ready": task is None or not task.done()}
+        library: Library = request.app.state.library
+        return {"ready": (task is None or not task.done()) and library.store.storage_ready()}
 
     @app.get("/v1/decks", response_model=list[Deck])
     async def decks(request: Request) -> list[Deck]:

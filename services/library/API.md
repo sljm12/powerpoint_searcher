@@ -1,10 +1,10 @@
 # Library HTTP API v1
 
-Content routes require `Authorization: Bearer <LIBRARY_TOKEN>`. `/health` is public. Authentication precedes request-body reads. Responses use `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, and a UUID `X-Request-ID`. Public OpenAPI routes are disabled. `create_app(...).openapi()` remains available for local contract checks.
+Content routes require `Authorization: Bearer <LIBRARY_TOKEN>`. `/health` is public and reports ready only while the worker runs and the selected database responds. Authentication precedes request-body reads. Responses use `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, and a UUID `X-Request-ID`. Public OpenAPI routes are disabled. `create_app(...).openapi()` remains available for local contract checks.
 
 | Method and path | Request | Success |
 | --- | --- | --- |
-| `GET /health` | None | 200 `{"ready": true}` when the library worker is running |
+| `GET /health` | None | 200 `{"ready": true}` when the worker and database are available; otherwise `{"ready": false}` |
 | `POST /v1/decks` | Multipart `file` exactly once; `Idempotency-Key` header | 202 `Accepted` |
 | `GET /v1/decks` | None | 200 array of active `Deck` records, newest first |
 | `GET /v1/deletions` | None | 200 minimal deletion fence records, newest first |
@@ -68,6 +68,10 @@ Errors have this shape:
 | 413 | Complete request or uploaded file exceeds its configured limit |
 | 415 | Unsupported upload format |
 | 422 | Empty upload |
-| 503 | Canonical original unavailable, temporary upstream download failure, or invalid persisted metadata |
+| 503 | Canonical original unavailable, temporary upstream download failure, invalid persisted metadata, or library storage unavailable |
 
 Accepted processing failures appear in a 200 status response with a safe structured error. No traceback, credentials, internal endpoint, private path, or slide text appears in errors. Five consecutive transient processing failures exhaust automatic retries and leave a retryable failed operation. An extraction 429 keeps work queued and waits for capacity with capped backoff. Delete operations retain their fence and retry cleanup indefinitely with capped backoff. Default limits and timeout values are in the README.
+
+Database errors use HTTP 503 with code `storage_unavailable` and a restart instruction. The service does not replay a mutation after a connection loss because PostgreSQL may have committed it before the response was lost. Repeat the request with its original idempotency key after restart, or poll the operation URL returned by the original request. Storage credentials and connection details never appear in HTTP responses.
+
+`LIBRARY_DB_BACKEND` selects `sqlite` or `postgresql` at startup and defaults to `sqlite`. `LIBRARY_POSTGRES_DSN` is required only for PostgreSQL and is not part of the HTTP API. Both backends keep originals, incoming uploads, the root marker, and the owner lock under `LIBRARY_DATA_DIR`. See the [library README](README.md#use-postgresql) for setup and transfer commands.
