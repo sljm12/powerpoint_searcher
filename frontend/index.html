@@ -40,6 +40,24 @@
           </div>
           <button id="refresh" class="button button-quiet" type="button">Refresh</button>
         </div>
+        <section class="search-panel card" aria-labelledby="search-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">TEXT SEARCH</p>
+              <h2 id="search-title">Find slides by meaning</h2>
+            </div>
+          </div>
+          <p id="search-disclosure" class="hint"></p>
+          <form id="search-form" class="search-form">
+            <label for="search-query">Search slide text and included speaker notes</label>
+            <div class="inline-field">
+              <input id="search-query" name="query" type="search" maxlength="2000" required placeholder="Try a phrase or question" />
+              <button id="search-submit" class="button button-accent" type="submit">Search slides</button>
+            </div>
+          </form>
+          <div id="search-status" class="search-status" role="status" aria-live="polite"></div>
+          <div id="search-results" class="search-results"></div>
+        </section>
         <form id="upload-form" class="upload-card card">
           <div class="upload-copy">
             <span class="upload-icon" aria-hidden="true">+</span>
@@ -63,7 +81,7 @@
           <div id="deletion-list" class="deletion-list" aria-live="polite"></div>
         </section>
         <div id="decks" class="deck-list"></div>
-        <p class="footnote">A completed extraction is labelled “Extracted”. Search indexing is not part of this workflow.</p>
+        <p class="footnote">Search covers native slide text and included speaker notes. Text inside images and visual meaning are not indexed.</p>
       </section>
     </main>
     <script type="module" src="/src/main.ts"></script>

@@ -1,6 +1,6 @@
 # PowerPoint library frontend
 
-The TypeScript frontend uploads PowerPoint decks to the library service. It shows extraction status, slide previews, graphic renditions, warnings, and authenticated downloads. It does not call the extraction service.
+The TypeScript frontend uploads PowerPoint decks to the library service. It shows extraction and search status, ranked slide previews, graphic renditions, warnings, and authenticated downloads. It does not call the extraction or search service directly.
 
 ## Configure and run
 
@@ -28,6 +28,12 @@ The build writes `dist/`. In a deployed setup, serve those files and route `/v1`
 Choose **View slides and graphics** on a deck to open its gallery. Previews load automatically. Use **Slides per row** to choose one to six columns. On narrow screens, the gallery scrolls horizontally when the selected columns do not fit.
 
 Select a slide to open its full preview, speaker notes, and extracted components in a modal. Excluded notes, slides without notes, and older manifests without note data are identified. Slide PNG, rendered graphic, and original embedded picture downloads retain their existing behavior and warnings. Close the modal with **Close slide** or Escape. Choose **Back to library** to return to the deck list. The row setting lasts for the current gallery visit.
+
+## Search slides
+
+When the library reports search as ready, enter a phrase or question and submit the search form. Results group slides by deck, show the best matching slide first, identify whether slide text or speaker notes matched, and offer more matches from that deck. Choose **Open slide** to enter the existing gallery at that slide. Reprocessing, replacement, and deletion are checked against the current generation before a result opens.
+
+The policy notice names the configured model and processing location. Native slide text, included notes, and query text are sent to that configured embedding endpoint. Images and original deck bytes are not sent. If semantic inference is unavailable after indexing, results are labelled lexical-only and the interface explains that cross-language and meaning-based matches may be missing.
 
 ## Verify
 

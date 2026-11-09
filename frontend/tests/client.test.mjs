@@ -87,7 +87,10 @@ test("reads the authenticated speaker notes upload policy", async () => {
     });
   };
   try {
-    assert.deepEqual(await new LibraryClient("x".repeat(32)).uploadPolicy(), { include_notes: false });
+    assert.deepEqual(await new LibraryClient("x".repeat(32)).uploadPolicy(), {
+      include_notes: false,
+      search: { state: "not_configured", profile_id: null, model: null, location: null, disclosure: "Text search is not configured." },
+    });
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -151,6 +154,30 @@ test("reuses an upload key after an uncertain server error", async () => {
     await assert.rejects(client.upload(file), /Library request failed \(502\)/);
     await client.upload(file);
     assert.equal(keys[0], keys[1]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("validates library search responses and keeps snippets as plain text", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    assert.match(String(url), /\/v1\/search$/);
+    assert.equal(new Headers(init.headers).get("Authorization"), `Bearer ${"x".repeat(32)}`);
+    assert.equal(JSON.parse(init.body).query, "battery safety");
+    return new Response(JSON.stringify({
+      query_id: generationId, profile_id: "profile", mode: "hybrid", degraded: false,
+      warnings: [], coverage: { eligible_slides: 1 }, next_offset: null,
+      decks: [{ deck_id: deckId, filename: "team.pptx", has_more_matches: false, matches: [{
+        slide_number: 1, generation_id: generationId, index_revision: 1, score: 0.04,
+        score_kind: "rrf", retrieval_paths: ["lexical", "semantic"], matched_channel: "native",
+        snippet: "<img src=x onerror=alert(1)>", preview_url: `/v1/decks/${deckId}/preview`, warning_metadata: [],
+      }] }],
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  try {
+    const result = await new LibraryClient("x".repeat(32)).search("battery safety");
+    assert.equal(result.decks[0].matches[0].snippet, "<img src=x onerror=alert(1)>");
   } finally {
     globalThis.fetch = originalFetch;
   }

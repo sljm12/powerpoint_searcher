@@ -1,6 +1,6 @@
 # PostgreSQL text and vector slide search design
 
-Status: proposed, revised 2026-11-09 to select PostgreSQL full-text search and pgvector. Implementation has not started.
+Status: implementation in progress on `feature/text-search`; revised 2026-11-09 to select PostgreSQL full-text search and pgvector. See the execution status in [the implementation plan](plans/text-search.md) for completed code and open verification gates.
 
 This feature helps the shared-library team find relevant slides using a natural-language query. Results rank decks by their best matching slide. Each deck group opens with that slide and offers more matching slides from the same deck. The project owner selected multilingual search and this grouping on 2026-11-09.
 

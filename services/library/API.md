@@ -4,12 +4,14 @@ Content routes require `Authorization: Bearer <LIBRARY_TOKEN>`. `/health` is pub
 
 | Method and path | Request | Success |
 | --- | --- | --- |
-| `GET /v1/policy` | None | 200 `{"include_notes": true}` or `false` |
+| `GET /v1/policy` | None | 200 notes policy and sanitized search readiness, model, location, and disclosure |
 | `GET /health` | None | 200 `{"ready": true}` when the worker and database are available; otherwise `{"ready": false}` |
 | `POST /v1/decks` | Multipart `file` exactly once; `Idempotency-Key` header | 202 `Accepted` |
 | `GET /v1/decks` | None | 200 array of active `Deck` records, newest first |
 | `GET /v1/deletions` | None | 200 minimal deletion fence records, newest first |
 | `GET /v1/decks/{deck_id}` | None | 200 `Deck`, including deletion state |
+| `POST /v1/search` | JSON `{query, deck_id?, limit?, offset?}` | 200 ranked current-generation slide groups |
+| `POST /v1/decks/{deck_id}/search/retry` | Empty body and `Idempotency-Key` | 200 durable search retry status, when the failed job is retryable |
 | `GET /v1/operations/{operation_id}` | None | 200 stable `Operation` record |
 | `POST /v1/decks/{deck_id}/retry` | Empty body; `Idempotency-Key` header | 202 `Accepted` |
 | `POST /v1/decks/{deck_id}/reprocess` | Empty body; `Idempotency-Key` header | 202 `Accepted` |
@@ -25,13 +27,15 @@ All identifiers are UUIDs. Keys contain 1 to 128 ASCII letters, digits, undersco
 
 `Accepted` contains `deck_id`, `operation_id`, `status_url`, and `operation_url`. Mutation responses retain stable operation identifiers. Repeating a keyed upload with identical filename and bytes returns the original accepted operation. Reusing its key with different input returns 409. Retry and reprocess keys bind the action and deck. A repeated key returns its original operation, even after a newer one exists. Keys are global within this library.
 
-`Deck` contains `deck_id`, nullable `filename`, nullable `source_sha256`, nullable `byte_length`, `source_revision`, `state`, `operation_id`, nullable `generation_id`, `completed_slides`, `total_slides`, `stage`, nullable `error`, `warnings`, `status_url`, nullable `manifest_url`, nullable `original_url`, and `updated_at`.
+`Deck` contains `deck_id`, nullable `filename`, nullable `source_sha256`, nullable `byte_length`, `source_revision`, `state`, `operation_id`, nullable `generation_id`, `completed_slides`, `total_slides`, `stage`, nullable `error`, `warnings`, `status_url`, nullable `manifest_url`, nullable `original_url`, `updated_at`, and nullable `search` status. Search status distinguishes `not_configured`, `queued`, `processing`, `ready`, `failed`, and `deleting`, and reports revision, generation, profile, job, progress, warnings, and a safe error.
 
 States are `queued`, `processing`, `extracted`, `failed`, `deleting`, and `deleted`. `extracted` means that a complete extraction generation is available. It does not mean searchable indexing has finished. Poll deck or operation status once per second, then back off for long work. Partial processing cannot publish a manifest.
 
 `Operation` contains `operation_id`, `deck_id`, `kind` of `extract`, `retry`, or `delete`, `state` of `pending`, `processing`, `succeeded`, `failed`, or `cancelled`, `phase`, `source_revision`, progress counts, `stage`, `error`, `warnings`, timestamps, and its `status_url`. Previously accepted operation IDs remain observable after supersession.
 
-`GET /v1/policy` reports the authenticated deployment-wide `LIBRARY_INCLUDE_NOTES` setting. It defaults to `true`. Uploads and reprocessing capture the setting when the operation is accepted. Retrying an operation keeps its captured value. Changing the setting applies to new uploads and reprocessing. The frontend reads this route before upload and shows whether speaker notes enter extracted content. The preserved original still contains its notes under either setting.
+`GET /v1/policy` reports the authenticated deployment-wide `LIBRARY_INCLUDE_NOTES` setting and sanitized text-search policy. Search configuration uses `LIBRARY_SEARCH_URL` and `LIBRARY_SEARCH_TOKEN`; both must be configured. The search token stays in the library process. The disclosure identifies the selected model and processing location and explains which text leaves the library. Uploads and reprocessing capture the notes setting when accepted. Retrying an operation keeps its captured value. The frontend reads this route before upload and search.
+
+`POST /v1/search` accepts query text in the JSON body, an optional `deck_id`, a `limit` from 1 to 100, and a nonnegative `offset`. It returns only results whose deck is extracted and whose generation, revision, and profile still match current library metadata. The library creates preview routes from the live manifest; remote asset URLs are never trusted. A query is not written to browser storage or placed in a URL.
 
 Retry accepts only the current failed operation with `error.retryable=true`. It preserves the revision. A failed extraction job uses extraction's keyed retry endpoint. A transport failure resumes the same recorded submission or polling request, so an uncertain response cannot duplicate attempts. Reprocessing increments the revision and submits the same immutable original with a new stable request key. Both operations retain the previous complete generation until a replacement is validated.
 

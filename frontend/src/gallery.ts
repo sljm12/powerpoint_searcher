@@ -17,12 +17,13 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "The request failed. Try again.";
 }
 
-export function openGallery({ client, deck, opener, libraryPage, onClose }: {
+export function openGallery({ client, deck, opener, libraryPage, onClose, initialSlide }: {
   client: Pick<LibraryClient, "manifest" | "image" | "download">;
   deck: Deck;
   opener: HTMLButtonElement;
   libraryPage: HTMLElement;
   onClose: () => void;
+  initialSlide?: number;
 }): Gallery {
   const scrollY = window.scrollY;
   const gallery = el("main", "gallery");
@@ -239,6 +240,7 @@ export function openGallery({ client, deck, opener, libraryPage, onClose }: {
         const trigger = button(`Slide ${slide.source.number}${slide.source.hidden ? " · Hidden" : ""}`, () => showSlide(manifest, slide, trigger), "slide-select");
         trigger.setAttribute("aria-label", `Open slide ${slide.source.number}${slide.source.hidden ? ", hidden" : ""}`);
         trigger.setAttribute("aria-haspopup", "dialog");
+        trigger.dataset.slideNumber = String(slide.source.number);
         const preview = imagePreview(assetFor(manifest, slide.preview.asset_local_id), `Slide ${slide.source.number} preview from ${deck.filename}`, galleryUrls);
         const footer = el("div", "slide-caption");
         footer.append(el("span", "slide-label", trigger.textContent ?? ""), el("span", "hint", `${slide.occurrences.length} components`));
@@ -249,6 +251,11 @@ export function openGallery({ client, deck, opener, libraryPage, onClose }: {
           trigger.click();
         });
         grid.append(card);
+      }
+      if (initialSlide !== undefined) {
+        const selected = grid.querySelector<HTMLButtonElement>(`[data-slide-number="${initialSlide}"]`);
+        if (selected) selected.click();
+        else feedback.textContent = `Slide ${initialSlide} is no longer available. Refresh search results.`;
       }
     } catch (error) {
       if (closed) return;
