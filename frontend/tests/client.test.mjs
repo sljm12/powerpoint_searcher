@@ -73,6 +73,23 @@ test("accepts a generation manifest whose preview references its asset", () => {
   assert.equal(parseManifest(validManifest()).content.slides[0].source.number, 1);
 });
 
+test("reads the authenticated speaker notes upload policy", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    assert.match(String(url), /\/v1\/policy$/);
+    assert.equal(new Headers(init.headers).get("Authorization"), `Bearer ${"x".repeat(32)}`);
+    return new Response(JSON.stringify({ include_notes: false }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  try {
+    assert.deepEqual(await new LibraryClient("x".repeat(32)).uploadPolicy(), { include_notes: false });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("accepts a retained generation while its deck is being reprocessed", () => {
   const deck = { ...validDeck(), state: "processing", source_revision: 2 };
   assert.equal(validateManifestForDeck(deck, parseManifest(validManifest())).source_revision, 1);

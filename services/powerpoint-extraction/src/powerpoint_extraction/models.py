@@ -5,9 +5,10 @@ from pathlib import Path
 from typing import Literal, Protocol, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 from .content import ExtractionContent, WarningDetail
+from .source import DEFAULT_NOTES_TEXT_LIMIT
 
 State = Literal["queued", "processing", "succeeded", "failed", "cancelled"]
 Stage = Literal["queued", "extracting", "rendering", "publishing"]
@@ -49,6 +50,9 @@ class Job(Record):
     state: State
     stage: Stage
     attempt: int = Field(gt=0)
+    include_notes: StrictBool = False
+    notes_text_limit: int = Field(default=DEFAULT_NOTES_TEXT_LIMIT, ge=1,
+                                   le=DEFAULT_NOTES_TEXT_LIMIT, strict=True)
     completed_slides: int = Field(ge=0)
     total_slides: int = Field(ge=0)
     created_at: str
@@ -161,6 +165,13 @@ class Claim(Record):
 
 
 class Extractor(Protocol):
-    async def __call__(self, source: Path, output: Path, progress: Progress) -> ExtractionResult:
+    async def __call__(
+        self,
+        source: Path,
+        output: Path,
+        progress: Progress,
+        include_notes: bool = True,
+        notes_text_limit: int = DEFAULT_NOTES_TEXT_LIMIT,
+    ) -> ExtractionResult:
         """On cancellation, stop and reap subprocesses before returning. Write only output."""
         ...

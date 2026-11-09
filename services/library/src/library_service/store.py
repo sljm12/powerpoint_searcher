@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import os
-import sqlite3
 import sys
 import threading
 import time
@@ -13,9 +12,10 @@ from pathlib import Path
 from typing import Literal, cast
 from uuid import UUID, uuid4
 
-from pydantic import model_validator
+from pydantic import StrictBool, model_validator
 
 from .models import Accepted, Deck, DeckState, DeletionStatus, ErrorDetail, Job, Manifest, Operation, Record, ServiceError
+from .metadata import Metadata
 
 
 def now() -> str:
@@ -45,6 +45,7 @@ class StoredDeck(Record):
 class StoredOperation(Operation):
     fence: int
     remote_key: str
+    include_notes: StrictBool | None = None
     parent_job: UUID | None = None
     job: Job | None = None
     retries: int = 0
@@ -52,7 +53,7 @@ class StoredOperation(Operation):
 
     def public(self) -> Operation:
         return Operation.model_validate(self.model_dump(exclude={
-            "fence", "remote_key", "parent_job", "job", "retries", "due"
+            "fence", "remote_key", "include_notes", "parent_job", "job", "retries", "due"
         }))
 
 
@@ -62,11 +63,11 @@ class Work(Record):
 
 
 class Store:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, backend: Literal["sqlite", "postgresql"] = "sqlite",
+                 dsn: str | None = None, include_notes: bool = True) -> None:
         self.root = root.resolve()
+        self.include_notes = include_notes
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
-        for name in ("incoming", "originals"):
-            (self.root / name).mkdir(exist_ok=True, mode=0o700)
         self.lock = threading.RLock()
         self.lock_file = (self.root / "owner.lock").open("a+b")
         if self.lock_file.tell() == 0:
@@ -83,45 +84,45 @@ class Store:
         except OSError:
             self.lock_file.close()
             raise RuntimeError("Library data directory already has an owner") from None
-        self.db = sqlite3.connect(self.root / "metadata.sqlite3", check_same_thread=False)
-        self.db.execute("PRAGMA secure_delete=ON")
-        version = self.db.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (0, 1):
+        self.metadata: Metadata | None = None
+        try:
+            self.metadata = Metadata(self.root, self._validate_legacy_records, backend, dsn)
+            for name in ("incoming", "originals"):
+                (self.root / name).mkdir(exist_ok=True, mode=0o700)
+            self.recover()
+        except BaseException:
             self.close()
-            raise RuntimeError("Unsupported library metadata schema")
-        self.db.executescript("""
-            CREATE TABLE IF NOT EXISTS decks (id TEXT PRIMARY KEY, record TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS operations (
-                id TEXT PRIMARY KEY, deck TEXT NOT NULL, state TEXT NOT NULL,
-                due REAL NOT NULL, record TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS requests (
-                key TEXT PRIMARY KEY, digest TEXT NOT NULL, operation TEXT NOT NULL
-            );
-            PRAGMA user_version=1;
-        """)
-        self.recover()
+            raise
+
+    @staticmethod
+    def _validate_legacy_records(metadata: Metadata) -> None:
+        try:
+            for raw in metadata.deck_records():
+                StoredDeck.model_validate_json(raw)
+            for raw in metadata.operation_records():
+                StoredOperation.model_validate_json(raw)
+        except ValueError:
+            raise RuntimeError("Library metadata failed validation. Restore a consistent backup.") from None
 
     @contextmanager
     def transaction(self) -> Iterator[None]:
         with self.lock:
-            try:
-                self.db.execute("BEGIN IMMEDIATE")
+            assert self.metadata is not None
+            with self.metadata.transaction():
                 yield
-                self.db.commit()
-            except BaseException:
-                self.db.rollback()
-                raise
 
     def close(self) -> None:
-        if hasattr(self, "db"):
-            self.db.close()
+        if self.metadata is not None:
+            self.metadata.close()
         if not self.lock_file.closed:
             if sys.platform == "win32":
                 import msvcrt
                 self.lock_file.seek(0)
                 msvcrt.locking(self.lock_file.fileno(), msvcrt.LK_UNLCK, 1)
             self.lock_file.close()
+
+    def storage_ready(self) -> bool:
+        return self.metadata is not None and self.metadata.check_health()
 
     def source_path(self, deck_id: UUID) -> Path:
         return self.root / "originals" / f"{deck_id}.pptx"
@@ -130,17 +131,19 @@ class Store:
         for path in (self.root / "incoming").iterdir():
             if path.is_file():
                 path.unlink()
-        known = {row[0] for row in self.db.execute("SELECT id FROM decks")}
+        assert self.metadata is not None
+        known = set(self.metadata.deck_ids())
         for path in (self.root / "originals").glob("*.pptx"):
             if path.stem not in known:
                 path.unlink()
 
     def _deck(self, identifier: UUID, allow_deleted: bool = False) -> StoredDeck:
-        row = self.db.execute("SELECT record FROM decks WHERE id=?", (str(identifier),)).fetchone()
-        if row is None:
+        assert self.metadata is not None
+        raw = self.metadata.deck_record(str(identifier))
+        if raw is None:
             raise ServiceError(404, "not_found", "Deck is unavailable.")
         try:
-            deck = StoredDeck.model_validate_json(row[0])
+            deck = StoredDeck.model_validate_json(raw)
         except ValueError:
             raise ServiceError(503, "metadata_unavailable", "Library metadata failed validation. Restore a consistent backup.") from None
         if deck.deleted_at is not None and not allow_deleted:
@@ -148,25 +151,27 @@ class Store:
         return deck
 
     def _operation(self, identifier: UUID) -> StoredOperation:
-        row = self.db.execute("SELECT record FROM operations WHERE id=?", (str(identifier),)).fetchone()
-        if row is None:
+        assert self.metadata is not None
+        raw = self.metadata.operation_record(str(identifier))
+        if raw is None:
             raise ServiceError(404, "not_found", "Operation is unavailable.")
         try:
-            return StoredOperation.model_validate_json(row[0])
+            return StoredOperation.model_validate_json(raw)
         except ValueError:
             raise ServiceError(503, "metadata_unavailable", "Library operation metadata failed validation. Restore a consistent backup.") from None
 
     def _save_deck(self, deck: StoredDeck) -> None:
-        self.db.execute("INSERT OR REPLACE INTO decks VALUES (?, ?)",
-                        (str(deck.deck_id), deck.model_dump_json()))
+        assert self.metadata is not None
+        self.metadata.save_deck(str(deck.deck_id), deck.model_dump_json())
 
     def _save_operation(self, operation: StoredOperation) -> None:
-        self.db.execute("INSERT OR REPLACE INTO operations VALUES (?, ?, ?, ?, ?)",
-                        (str(operation.operation_id), str(operation.deck_id), operation.state,
-                         operation.due, operation.model_dump_json()))
+        assert self.metadata is not None
+        self.metadata.save_operation(str(operation.operation_id), str(operation.deck_id),
+                                     operation.state, operation.due, operation.model_dump_json())
 
     def _request(self, key: str, digest: str) -> StoredOperation | None:
-        row = self.db.execute("SELECT digest, operation FROM requests WHERE key=?", (key,)).fetchone()
+        assert self.metadata is not None
+        row = self.metadata.request(key)
         if row is None:
             return None
         operation = self._operation(UUID(row[1]))
@@ -183,6 +188,7 @@ class Store:
         return StoredOperation(operation_id=identifier, deck_id=deck_id, kind=kind,
                                state="pending", phase=phase, source_revision=revision,
                                fence=fence, remote_key=str(identifier), created_at=timestamp,
+                               include_notes=self.include_notes if kind == "extract" else None,
                                updated_at=timestamp, due=time.time(), status_url=f"/v1/operations/{identifier}")
 
     @staticmethod
@@ -208,8 +214,8 @@ class Store:
             os.replace(source, self.source_path(identifier))
             self._save_deck(deck)
             self._save_operation(operation)
-            self.db.execute("INSERT INTO requests VALUES (?, ?, ?)",
-                            (key, digest, str(operation.operation_id)))
+            assert self.metadata is not None
+            self.metadata.save_request(key, digest, str(operation.operation_id))
             return self.accepted(operation)
 
     def deck(self, identifier: UUID) -> Deck:
@@ -230,14 +236,15 @@ class Store:
 
     def decks(self) -> list[Deck]:
         with self.lock:
-            identifiers = [UUID(row[0]) for row in self.db.execute("SELECT id FROM decks ORDER BY rowid DESC")]
+            assert self.metadata is not None
+            identifiers = [UUID(identifier) for identifier in self.metadata.deck_ids(newest_first=True)]
             return [deck for identifier in identifiers if (deck := self.deck(identifier)).state not in ("deleting", "deleted")]
 
     def deletions(self) -> list[DeletionStatus]:
         with self.lock:
-            records = self.db.execute("SELECT record FROM decks ORDER BY rowid DESC").fetchall()
+            assert self.metadata is not None
             result: list[DeletionStatus] = []
-            for (raw_record,) in records:
+            for raw_record in self.metadata.deck_records(newest_first=True):
                 deck = StoredDeck.model_validate_json(raw_record)
                 if deck.deleted_at is not None and deck.state in ("deleting", "deleted"):
                     result.append(DeletionStatus(deck_id=deck.deck_id, state=deck.state,
@@ -266,6 +273,7 @@ class Store:
                 phase = "retry" if remote_failed or remote_retry else ("poll" if old.job else "submit")
                 operation = self._new_operation(identifier, deck.source_revision, deck.fence + 1,
                                                 "retry", cast(Literal["submit", "retry", "poll"], phase))
+                operation.include_notes = old.include_notes
                 operation.parent_job = old.job.job_id if remote_failed and old.job else old.parent_job if remote_retry else None
                 operation.job = None if remote_failed or remote_retry else old.job
                 if not remote_failed:
@@ -282,13 +290,14 @@ class Store:
             deck.current_operation, deck.state, deck.updated_at = operation.operation_id, "queued", now()
             self._save_operation(operation)
             self._save_deck(deck)
-            self.db.execute("INSERT INTO requests VALUES (?, ?, ?)", (key, digest, str(operation.operation_id)))
+            assert self.metadata is not None
+            self.metadata.save_request(key, digest, str(operation.operation_id))
             return self.accepted(operation)
 
     def delete(self, identifier: UUID) -> Accepted:
         with self.transaction():
-            row = self.db.execute("SELECT 1 FROM decks WHERE id=?", (str(identifier),)).fetchone()
-            if row is None:
+            assert self.metadata is not None
+            if not self.metadata.has_deck(str(identifier)):
                 timestamp = now()
                 operation = self._new_operation(identifier, 1, 1, "delete", "delete")
                 deck = StoredDeck(deck_id=identifier, filename=None, checksum=None, byte_length=None,
@@ -310,9 +319,8 @@ class Store:
             deck.deleted_at, deck.state, deck.updated_at = now(), "deleting", now()
             deck.manifest, deck.current_operation = None, operation.operation_id
             deck.filename, deck.checksum, deck.byte_length = None, None, None
-            rows = self.db.execute("SELECT id FROM operations WHERE deck=?", (str(identifier),)).fetchall()
-            for row in rows:
-                previous = self._operation(UUID(row[0]))
+            for operation_id in self.metadata.operation_ids(str(identifier)):
+                previous = self._operation(UUID(operation_id))
                 previous.job, previous.error, previous.warnings = None, None, []
                 previous.remote_key, previous.parent_job = "", None
                 previous.completed_slides, previous.total_slides, previous.stage = 0, 0, "deleted"
@@ -321,13 +329,14 @@ class Store:
                 self._save_operation(previous)
             self._save_operation(operation)
             self._save_deck(deck)
-            self.db.execute("UPDATE requests SET digest='deleted' WHERE operation IN (SELECT id FROM operations WHERE deck=?)", (str(identifier),))
+            self.metadata.delete_requests(str(identifier))
             return self.accepted(operation)
 
     def due(self) -> Work | None:
         with self.lock:
-            rows = self.db.execute("SELECT id FROM operations WHERE state IN ('pending', 'processing') AND due<=? ORDER BY due, rowid", (time.time(),)).fetchall()
-            pending = [self._operation(UUID(row[0])) for row in rows]
+            assert self.metadata is not None
+            pending = [self._operation(UUID(identifier))
+                       for identifier in self.metadata.due_operation_ids(time.time())]
             pending.sort(key=lambda operation: operation.kind != "delete")
             for operation in pending:
                 deck = self._deck(operation.deck_id, allow_deleted=True)

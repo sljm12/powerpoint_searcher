@@ -61,6 +61,10 @@ To run the automated checks instead, use `uv run --locked pytest -q`, `uv run --
 
 The service binds to `127.0.0.1:8001` by default. `EX1_HOST` and `EX1_PORT` configure the listener. The renderer initializes during startup. `/health` reports whether the configured confined runtime is ready. Native Windows rendering currently fails closed because LibreOffice's UNO pipe cannot be reached inside the tested zero-capability AppContainer. Linux rendering requires the documented bubblewrap and cgroup setup. There is no unconfined fallback.
 
+The service reads speaker notes by default when the library submits `include_notes=true`. `EX1_NOTES_TEXT_LIMIT` sets the per-slide character cap and defaults to 4096. Values must be between 1 and 4096. The service stores the cap with each job, so queued work and retries keep the same limit after restart or configuration changes.
+
+Jobs stored before notes-policy capture default to exclusion when retried. Reprocess the deck at a new revision to apply inclusion or the current text cap. Existing idempotency keys still return their original jobs.
+
 `EX1_DATA_DIR` must be an empty, dedicated directory. Windows startup protects it with a current-user-only ACL and rejects links. Linux requires owner-only permissions. One service process owns the directory through an exclusive lifetime lock. Run one server worker and one instance per directory.
 
 ## API and behavior

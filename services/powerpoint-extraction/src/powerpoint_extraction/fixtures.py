@@ -91,3 +91,36 @@ def generate(destination: Path) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
     presentation.save(str(destination))
     return destination
+
+
+def generate_notes(destination: Path) -> Path:
+    presentation = Presentation()
+    presentation.slide_width = Inches(10)
+    presentation.slide_height = Inches(7.5)
+    first = presentation.slides.add_slide(presentation.slide_layouts[6])
+    first.notes_slide.notes_text_frame.paragraphs[0].text = "First notes paragraph"
+    first.notes_slide.notes_text_frame.add_paragraph().text = "Unicode: résumé 東京 🙂"
+    first.notes_slide.notes_text_frame.add_paragraph().text = ""
+    first.notes_slide.notes_text_frame.add_paragraph().text = "Last notes paragraph"
+    notes_page_shape = first.shapes.add_textbox(Inches(1), Inches(1), Inches(2), Inches(1))
+    notes_page_shape.text = "NOTES-PAGE-SHAPE-SENTINEL"
+    first.notes_slide.shapes._spTree.append(notes_page_shape.element)
+
+    hidden = presentation.slides.add_slide(presentation.slide_layouts[6])
+    hidden._element.set("show", "0")
+    hidden.notes_slide.notes_text_frame.text = "Hidden slide notes"
+
+    empty = presentation.slides.add_slide(presentation.slide_layouts[6])
+    empty.notes_slide.notes_text_frame.text = ""
+
+    long_note = presentation.slides.add_slide(presentation.slide_layouts[6])
+    long_note.notes_slide.notes_text_frame.text = "L" * 5000
+
+    presentation.slides.add_slide(presentation.slide_layouts[6])
+
+    master_shape = first.shapes.add_textbox(Inches(1), Inches(1), Inches(2), Inches(1))
+    master_shape.text = "NOTES-MASTER-SENTINEL"
+    presentation.notes_master.shapes._spTree.append(master_shape.element)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    presentation.save(str(destination))
+    return destination

@@ -13,6 +13,8 @@ npm run dev
 
 Open the local URL printed by Vite. Enter the library access token on the page. The frontend keeps the token in memory and sends it as a bearer token. It does not write the token to browser storage.
 
+After connection, the upload form shows whether speaker notes will be included. The frontend refreshes this policy before upload. The original deck keeps its notes in either policy.
+
 Build static files with:
 
 ```powershell

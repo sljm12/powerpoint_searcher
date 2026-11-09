@@ -26,6 +26,7 @@ from .models import (
     ServiceError,
     Stage,
 )
+from .source import DEFAULT_NOTES_TEXT_LIMIT
 
 
 def now() -> str:
@@ -35,11 +36,16 @@ def now() -> str:
 class Store:
     """One metadata owner. All authorization and publication changes share this transaction lock."""
 
-    def __init__(self, root: Path, queue_limit: int = 8, manifest_limit: int = 8 * 1024 * 1024) -> None:
+    def __init__(self, root: Path, queue_limit: int = 8,
+                 manifest_limit: int = 8 * 1024 * 1024,
+                 notes_text_limit: int = DEFAULT_NOTES_TEXT_LIMIT) -> None:
+        if min(queue_limit, manifest_limit, notes_text_limit) <= 0 or notes_text_limit > DEFAULT_NOTES_TEXT_LIMIT:
+            raise ValueError("Invalid extraction storage limits")
         self.root = root.resolve()
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.queue_limit = queue_limit
         self.manifest_limit = manifest_limit
+        self.notes_text_limit = notes_text_limit
         self.lock = threading.RLock()
         self.lock_file = (self.root / "owner.lock").open("a+b")
         if self.lock_file.tell() == 0:
@@ -131,18 +137,24 @@ class Store:
         if sum(Job.model_validate_json(r[0]).state in ("queued", "processing") for r in records) >= self.queue_limit:
             raise ServiceError(429, "queue_full", "Processing queue is full; retry later.", True)
 
-    def _new_job(self, deck: UUID, revision: int, attempt: int) -> Job:
+    def _new_job(self, deck: UUID, revision: int, attempt: int,
+                 include_notes: bool, notes_text_limit: int) -> Job:
         identifier = uuid4()
         return Job(job_id=identifier, deck_id=deck, source_revision=revision,
                    generation_id=uuid4(), state="queued", stage="queued", attempt=attempt,
+                   include_notes=include_notes, notes_text_limit=notes_text_limit,
                    completed_slides=0, total_slides=0, created_at=now(), updated_at=now(),
                    status_url=f"/v1/jobs/{identifier}")
 
-    def submit(self, deck: UUID, revision: int, key: str, source: Path, filename: str = "presentation.pptx") -> Job:
+    def submit(self, deck: UUID, revision: int, key: str, source: Path,
+               filename: str = "presentation.pptx", *, include_notes: bool = True) -> Job:
         if not filename or len(filename) > 255 or any(ord(char) < 32 for char in filename) or "/" in filename or "\\" in filename:
             raise ServiceError(400, "malformed_request", "Source filename is invalid.")
         checksum = hashlib.sha256(source.read_bytes()).hexdigest()
-        digest = hashlib.sha256(f"v1:{revision}:{checksum}:{filename}".encode()).hexdigest()
+        digest = hashlib.sha256(
+            f"v2:{revision}:{checksum}:{filename}:{include_notes}:{self.notes_text_limit}".encode()
+        ).hexdigest()
+        legacy_digest = hashlib.sha256(f"v1:{revision}:{checksum}:{filename}".encode()).hexdigest()
         deck_id = str(deck)
         with self.transaction():
             row = self.db.execute("SELECT * FROM decks WHERE id=?", (deck_id,)).fetchone()
@@ -150,7 +162,7 @@ class Store:
                 raise ServiceError(410, "deleted", "Deck identity was deleted.")
             previous = self.db.execute("SELECT * FROM requests WHERE deck=? AND key=?", (deck_id, key)).fetchone()
             if previous is not None:
-                if previous["digest"] != digest:
+                if previous["digest"] not in (digest, legacy_digest):
                     raise ServiceError(409, "idempotency_conflict", "Idempotency key was used for different input.")
                 return self.get_job(UUID(previous["job"]))
             if row is not None:
@@ -160,6 +172,8 @@ class Store:
                     if checksum != row["checksum"] or filename != row["filename"]:
                         raise ServiceError(409, "revision_conflict", "Revision already contains different bytes.")
                     job = self.get_job(UUID(row["current_job"]))
+                    if job.include_notes != include_notes or job.notes_text_limit != self.notes_text_limit:
+                        raise ServiceError(409, "revision_conflict", "Revision already uses a different extraction policy.")
                     self.db.execute("INSERT INTO requests VALUES (?, ?, ?, ?)", (deck_id, key, digest, str(job.job_id)))
                     return job
             self._queue_space(deck_id)
@@ -174,7 +188,7 @@ class Store:
             directory.mkdir(exist_ok=True)
             destination = directory / f"source-{revision}.pptx"
             shutil.copyfile(source, destination)
-            job = self._new_job(deck, revision, 1)
+            job = self._new_job(deck, revision, 1, include_notes, self.notes_text_limit)
             self.db.execute("""INSERT INTO decks (id, revision, checksum, filename, current_job) VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET revision=excluded.revision, checksum=excluded.checksum,
                 filename=excluded.filename, current_job=excluded.current_job, fence=decks.fence+1""",
@@ -202,7 +216,8 @@ class Store:
             if job.state != "failed" or job.error is None or not job.error.retryable:
                 raise ServiceError(409, "not_retryable", "Only a current retryable failed job can be retried.")
             self._queue_space()
-            new_job = self._new_job(job.deck_id, job.source_revision, job.attempt + 1)
+            new_job = self._new_job(job.deck_id, job.source_revision, job.attempt + 1,
+                                    job.include_notes, job.notes_text_limit)
             self._save_job(new_job)
             self.db.execute("UPDATE decks SET current_job=?, fence=fence+1 WHERE id=?", (str(new_job.job_id), str(job.deck_id)))
             if key is not None:
@@ -266,6 +281,9 @@ class Store:
         if not self.is_current(claim):
             return False
         result = ExtractionResult.model_validate(result)
+        expected_notes = {"present", "empty"} if claim.job.include_notes else {"excluded"}
+        if any(slide.notes is None or slide.notes.state not in expected_notes for slide in result.content.slides):
+            raise ValueError("Extraction notes do not match the captured policy")
         assets: list[Asset] = []
         files: list[tuple[str, str, str]] = []
         local_ids: set[str] = set()

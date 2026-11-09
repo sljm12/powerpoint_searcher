@@ -4,7 +4,7 @@ from typing import Literal, Self
 
 from pydantic import Field, model_validator
 
-from .source import Occurrence, Record
+from .source import Notes, Occurrence, Record
 
 
 class WarningDetail(Record):
@@ -75,6 +75,7 @@ class SlideSource(Record):
 
 class SlideContent(Record):
     source: SlideSource
+    notes: Notes | None = None
     preview: Rendition
     occurrences: list[OccurrenceContent]
 

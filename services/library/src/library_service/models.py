@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 
 class Record(BaseModel):
@@ -34,6 +34,8 @@ class Job(Record):
     deck_id: UUID
     source_revision: int = Field(gt=0)
     generation_id: UUID
+    include_notes: StrictBool = False
+    notes_text_limit: int = Field(default=4096, ge=1, le=4096, strict=True)
     state: Literal["queued", "processing", "succeeded", "failed", "cancelled"]
     stage: Literal["queued", "extracting", "rendering", "publishing"]
     attempt: int = Field(gt=0)
@@ -144,8 +146,27 @@ class SlideSource(Record):
     height: int = Field(gt=0)
 
 
+class Notes(Record):
+    state: Literal["present", "empty", "excluded"]
+    paragraphs: list[str]
+    truncated: StrictBool
+
+    @model_validator(mode="after")
+    def consistent(self) -> Self:
+        size = sum(map(len, self.paragraphs)) + max(0, len(self.paragraphs) - 1)
+        if size > 4096:
+            raise ValueError("Speaker notes exceed the supported limit")
+        if self.state in ("empty", "excluded"):
+            if self.paragraphs or self.truncated:
+                raise ValueError("Empty or excluded notes cannot contain text")
+        elif not self.paragraphs or (not self.truncated and not any(item.strip() for item in self.paragraphs)):
+            raise ValueError("Present notes require speaker text")
+        return self
+
+
 class Slide(Record):
     source: SlideSource
+    notes: Notes | None = None
     preview: Rendition
     occurrences: list[Occurrence]
 
@@ -237,6 +258,10 @@ class Operation(Record):
     created_at: str
     updated_at: str
     status_url: str
+
+
+class UploadPolicy(Record):
+    include_notes: StrictBool
 
 
 class Deck(Record):

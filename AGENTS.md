@@ -2,6 +2,8 @@
 
 Read [the project constitution](docs/constitution.md) before planning or implementing features. Identify conflicts with it before changing behavior. Keep feature-specific tasks and implementation details in separate plans.
 
+When planning or implementing a feature covered by [the preliminary design](docs/design_doc.md), consult it as decision-making context. It is provisional guidance, not a binding requirement: use judgment, explain and recommend a better approach when the design conflicts with project needs or evidence, and ask the project owner for clarification when an unresolved decision materially affects the implementation. The constitution takes precedence over the preliminary design.
+
 ## Module layout and ownership
 
 Follow the architecture and language requirements in the constitution. Use this layout as modules are implemented. The paths below are conventions, not claims that these modules already exist.
