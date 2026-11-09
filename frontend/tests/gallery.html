@@ -22,6 +22,7 @@
       source_revision: 1,
       content: { slides: Array.from({ length: 12 }, (_, i) => ({
         source: { number: i + 1, hidden: i === 3 },
+        notes: i === 0 ? { state: "present", paragraphs: ["Discuss the three steps.", "Ask for questions."], truncated: false } : { state: "empty", paragraphs: [], truncated: false },
         preview: { asset_local_id: i === 11 ? null : `slide-${i + 1}`, warnings: [] },
         occurrences: i === 0 ? [occurrence] : [],
       })) },
@@ -58,6 +59,7 @@
       await click(".slide-select");
       assert(document.querySelector("dialog").open, "Clicking a slide opens a modal.");
       assert(document.querySelectorAll(".graphic-row").length === 1, "The modal contains the selected slide's components.");
+      assert(document.querySelector(".slide-notes").textContent.includes("Discuss the three steps.") && document.querySelector(".slide-notes").textContent.includes("Ask for questions."), "The selected slide's speaker note paragraphs are visible.");
       assert(document.querySelector("dialog").textContent.includes("Fixture warning preserved."), "Component warnings remain visible.");
       byText("Download slide PNG").click();
       byText("Download original embedded picture").click();

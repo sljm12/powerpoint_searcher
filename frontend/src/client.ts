@@ -45,6 +45,7 @@ export type Occurrence = {
 };
 export type Slide = {
   source: { number: number; hidden: boolean };
+  notes: { state: "present" | "empty" | "excluded"; paragraphs: string[]; truncated: boolean } | null;
   preview: Rendition;
   occurrences: Occurrence[];
 };
@@ -277,12 +278,24 @@ export function parseManifest(value: unknown): Manifest {
     const slide = object(value, "slide");
     const source = object(slide.source, "slide source");
     if (typeof source.hidden !== "boolean") throw new Error("Invalid slide visibility response.");
+    let notes: Slide["notes"] = null;
+    if (slide.notes != null) {
+      const row = object(slide.notes, "slide notes");
+      const state = row.state;
+      const paragraphs = row.paragraphs;
+      const truncated = row.truncated;
+      if ((state !== "present" && state !== "empty" && state !== "excluded") ||
+          !Array.isArray(paragraphs) || !paragraphs.every((paragraph) => typeof paragraph === "string") ||
+          typeof truncated !== "boolean") throw new Error("Invalid slide notes response.");
+      notes = { state, paragraphs, truncated };
+    }
     const preview = parseRendition(slide.preview);
     const previewAsset = preview.asset_local_id === null ? undefined : assetByLocalId.get(preview.asset_local_id);
     if (preview.status !== "rendered" || previewAsset?.role !== "slide_preview" || integer(source.number, "slide number", 1) !== index + 1) throw new Error("Slide preview is unavailable.");
     const occurrences = slide.occurrences;
     if (!Array.isArray(occurrences)) throw new Error("Invalid slide occurrences response.");
-    return { source: { number: integer(source.number, "slide number", 1), hidden: source.hidden }, preview, occurrences: occurrences.map(parseOccurrence) };
+    return { source: { number: integer(source.number, "slide number", 1), hidden: source.hidden }, notes,
+      preview, occurrences: occurrences.map(parseOccurrence) };
   });
   for (const slide of slides) for (const item of slide.occurrences) {
     if (item.source.slide !== slide.source.number || item.original_available !== (item.original_asset_local_id !== null)) throw new Error("Occurrence identity is inconsistent.");

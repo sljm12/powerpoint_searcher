@@ -175,7 +175,17 @@ export function openGallery({ client, deck, opener, libraryPage, onClose }: {
     components.append(el("h2", "components-title", `Components (${slide.occurrences.length})`));
     if (slide.occurrences.length === 0) components.append(el("p", "hint", "No components were extracted for this slide."));
     for (const occurrence of slide.occurrences) components.append(renderOccurrence(manifest, occurrence));
-    content.append(preview, components);
+    const notes = el("section", "slide-notes");
+    notes.setAttribute("aria-label", "Speaker notes");
+    notes.append(el("h2", "components-title", "Speaker notes"));
+    if (!slide.notes) notes.append(el("p", "hint", "Speaker notes are unavailable for this older manifest."));
+    else if (slide.notes.state === "excluded") notes.append(el("p", "hint", "Speaker notes were excluded during extraction."));
+    else if (slide.notes.state === "empty") notes.append(el("p", "hint", "This slide has no speaker notes."));
+    else {
+      for (const paragraph of slide.notes.paragraphs) notes.append(el("p", "notes-paragraph", paragraph));
+      if (slide.notes.truncated) notes.append(el("p", "hint", "Speaker notes were shortened to fit the supported text limit."));
+    }
+    content.append(preview, components, notes);
     dialog.replaceChildren(heading, source, feedback, content);
     dialog.showModal();
     dialog.scrollTop = 0;

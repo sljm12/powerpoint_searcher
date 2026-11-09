@@ -41,6 +41,7 @@ function validManifest() {
       schema_version: 1,
       slides: [{
         source: { number: 1, source_slide_id: 4, hidden: false, width: 1000, height: 500 },
+        notes: { state: "present", paragraphs: ["Speaker note text"], truncated: false },
         preview: { asset_local_id: "slide-1", status: "rendered", method: "slide_render", warnings: [] },
         occurrences: [],
       }],
@@ -70,7 +71,9 @@ test("rejects a deck with a malformed checksum", () => {
 });
 
 test("accepts a generation manifest whose preview references its asset", () => {
-  assert.equal(parseManifest(validManifest()).content.slides[0].source.number, 1);
+  const slide = parseManifest(validManifest()).content.slides[0];
+  assert.equal(slide.source.number, 1);
+  assert.deepEqual(slide.notes, { state: "present", paragraphs: ["Speaker note text"], truncated: false });
 });
 
 test("reads the authenticated speaker notes upload policy", async () => {

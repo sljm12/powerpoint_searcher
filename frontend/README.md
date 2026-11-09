@@ -27,7 +27,7 @@ The build writes `dist/`. In a deployed setup, serve those files and route `/v1`
 
 Choose **View slides and graphics** on a deck to open its gallery. Previews load automatically. Use **Slides per row** to choose one to six columns. On narrow screens, the gallery scrolls horizontally when the selected columns do not fit.
 
-Select a slide to open its full preview and extracted components in a modal. Slide PNG, rendered graphic, and original embedded picture downloads retain their existing behavior and warnings. Close the modal with **Close slide** or Escape. Choose **Back to library** to return to the deck list. The row setting lasts for the current gallery visit.
+Select a slide to open its full preview, speaker notes, and extracted components in a modal. Excluded notes, slides without notes, and older manifests without note data are identified. Slide PNG, rendered graphic, and original embedded picture downloads retain their existing behavior and warnings. Close the modal with **Close slide** or Escape. Choose **Back to library** to return to the deck list. The row setting lasts for the current gallery visit.
 
 ## Verify
 

@@ -109,6 +109,8 @@ input:focus-visible, button:focus-visible, select:focus-visible, .file-picker:fo
 .detail-preview > .preview-frame { border: 1px solid var(--line); border-radius: 8px; }
 .detail-preview > .button { margin-top: 16px; }
 .slide-components { min-width: 0; }
+.slide-notes { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 20px; }
+.notes-paragraph { white-space: pre-wrap; overflow-wrap: anywhere; }
 .components-title { font-size: 17px; margin-bottom: 16px; }
 .slide-image, .graphic-image { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 5px; background: #f5f5f3; }
 .graphic-row { padding: 11px 0; border-top: 1px solid var(--line); }
