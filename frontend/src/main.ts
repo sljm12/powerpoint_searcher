@@ -13,6 +13,7 @@ const connectForm = requiredElement<HTMLFormElement>("#connect-form");
 const uploadForm = requiredElement<HTMLFormElement>("#upload-form");
 const fileInput = requiredElement<HTMLInputElement>("#deck-file");
 const fileName = requiredElement<HTMLElement>("#file-name");
+const notesPolicy = requiredElement<HTMLElement>("#notes-policy");
 const status = requiredElement<HTMLElement>("#status");
 const library = requiredElement<HTMLElement>("#library");
 const deckList = requiredElement<HTMLElement>("#decks");
@@ -46,6 +47,12 @@ function actionButton(label: string, action: (button: HTMLButtonElement) => void
 
 function reportError(error: unknown): void {
   showStatus(error instanceof Error ? error.message : "The request failed.", "error");
+}
+
+function showNotesPolicy(includeNotes: boolean): void {
+  notesPolicy.textContent = includeNotes
+    ? "Speaker notes are included in extracted content and can be read by library users. The original deck keeps its notes."
+    : "Speaker notes are excluded from extracted content. The original deck keeps its notes.";
 }
 
 function stateLabel(state: DeckState): string {
@@ -200,7 +207,10 @@ async function followDeletion(accepted: { operation_id: string }): Promise<void>
 connectForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
-    client = new LibraryClient(tokenInput.value);
+    const connectedClient = new LibraryClient(tokenInput.value);
+    const policy = await connectedClient.uploadPolicy();
+    client = connectedClient;
+    showNotesPolicy(policy.include_notes);
     await renderDecks(true);
     library.hidden = false;
     showStatus("Connected to the shared library.");
@@ -219,6 +229,8 @@ uploadForm.addEventListener("submit", async (event) => {
   const file = fileInput.files?.item(0);
   if (!file) return;
   try {
+    const policy = await client.uploadPolicy();
+    showNotesPolicy(policy.include_notes);
     showStatus(`Uploading ${file.name}…`);
     await client.upload(file);
     fileInput.value = "";
@@ -230,7 +242,13 @@ uploadForm.addEventListener("submit", async (event) => {
   }
 });
 
-refreshButton.addEventListener("click", () => void renderDecks(true).then(() => showStatus("Library refreshed.")).catch(reportError));
+refreshButton.addEventListener("click", () => void (async () => {
+  if (client === null) return;
+  const policy = await client.uploadPolicy();
+  showNotesPolicy(policy.include_notes);
+  await renderDecks(true);
+  showStatus("Library refreshed.");
+})().catch(reportError));
 fileInput.addEventListener("change", () => {
   fileName.textContent = fileInput.files?.item(0)?.name ?? "No file selected";
 });

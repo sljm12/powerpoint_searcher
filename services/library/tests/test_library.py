@@ -28,7 +28,8 @@ ORIGINAL = b"original embedded picture bytes"
 CROP = b"contextual crop PNG bytes"
 
 
-def manifest(deck: UUID, generation: UUID, revision: int, checksum: str, filename: str) -> dict[str, object]:
+def manifest(deck: UUID, generation: UUID, revision: int, checksum: str, filename: str,
+             notes: dict[str, object] | None = None) -> dict[str, object]:
     def asset(local_id: str, role: str, data: bytes, media_type: str = "image/png") -> dict[str, object]:
         identifier = uuid4()
         return {"asset_id": str(identifier), "local_id": local_id, "role": role,
@@ -55,6 +56,7 @@ def manifest(deck: UUID, generation: UUID, revision: int, checksum: str, filenam
             "content": {"schema_version": 1, "extractor_version": "fixture-1", "renderer_version": "fixture-1",
                         "config_fingerprint": "0" * 64,
                         "slides": [{"source": {"number": 1, "source_slide_id": 256, "hidden": False, "width": 100, "height": 50},
+                                    **({"notes": notes} if notes is not None else {}),
                                     "preview": preview, "occurrences": [{"source": source, "original_asset_local_id": "original",
                                                                         "original_available": True, "primary": True, "rendition": crop}]}]},
             "assets": [asset("preview", "slide_preview", PREVIEW), asset("original", "original_picture", ORIGINAL, "image/jpeg"),
@@ -69,17 +71,22 @@ class Remote:
         self.filename = "team.pptx"
         self.checksum = hashlib.sha256(b"deck").hexdigest()
         self.fail_conversion = False
+        self.fail_notes = False
         self.fail_delete = False
         self.fail_retry = False
         self.lose_retry_response = False
         self.corrupt_manifest = False
+        self.mismatch_notes_policy = False
         self.asset_started: asyncio.Event | None = None
         self.asset_continue: asyncio.Event | None = None
 
-    def new_job(self, deck: UUID, revision: int, attempt: int = 1) -> Job:
+    def new_job(self, deck: UUID, revision: int, attempt: int = 1,
+                include_notes: bool = True, notes_text_limit: int = 4096) -> Job:
         identifier = uuid4()
         job = Job(job_id=identifier, deck_id=deck, source_revision=revision,
-                  generation_id=uuid4(), state="queued", stage="queued", attempt=attempt,
+                  generation_id=uuid4(), include_notes=include_notes,
+                  notes_text_limit=notes_text_limit,
+                  state="queued", stage="queued", attempt=attempt,
                   completed_slides=0, total_slides=1, created_at="2026-11-07T00:00:00+00:00",
                   updated_at="2026-11-07T00:00:00+00:00", status_url=f"/v1/jobs/{identifier}")
         self.jobs[identifier] = job
@@ -94,7 +101,9 @@ class Remote:
             fields = body.decode("latin1").split("\r\n")
             revision = int(fields[fields.index('Content-Disposition: form-data; name="source_revision"') + 2])
             key = fields[fields.index('Content-Disposition: form-data; name="idempotency_key"') + 2]
-            job = self.keys.get(key) or self.new_job(UUID(parts[2]), revision)
+            include_notes = fields[fields.index('Content-Disposition: form-data; name="include_notes"') + 2] == "true"
+            job = self.keys.get(key) or self.new_job(UUID(parts[2]), revision,
+                                                     include_notes=include_notes)
             self.keys[key] = job
             return httpx.Response(202, json=job.model_dump(mode="json"))
         if request.method == "POST" and parts[-1] == "retry":
@@ -102,7 +111,10 @@ class Remote:
                 raise httpx.ConnectError("retry unavailable", request=request)
             key = request.headers["idempotency-key"]
             parent = self.jobs[UUID(parts[2])]
-            job = self.keys.get(key) or self.new_job(parent.deck_id, parent.source_revision, parent.attempt + 1)
+            job = self.keys.get(key) or self.new_job(
+                parent.deck_id, parent.source_revision, parent.attempt + 1,
+                parent.include_notes, parent.notes_text_limit,
+            )
             self.keys[key] = job
             if self.lose_retry_response:
                 self.lose_retry_response = False
@@ -110,7 +122,11 @@ class Remote:
             return httpx.Response(202, json=job.model_dump(mode="json"))
         if request.method == "GET" and parts[1] == "jobs":
             job = self.jobs[UUID(parts[2])]
-            if self.fail_conversion:
+            if self.fail_notes:
+                value = job.model_dump(mode="json")
+                value.update(state="failed", stage="extracting", error={"code": "invalid_notes", "message": "safe", "retryable": False, "stage": "extracting"})
+                job = Job.model_validate(value)
+            elif self.fail_conversion:
                 value = job.model_dump(mode="json")
                 value.update(state="failed", stage="rendering", error={"code": "conversion_failed", "message": "safe", "retryable": True, "stage": "rendering"})
                 job = Job.model_validate(value)
@@ -118,7 +134,11 @@ class Remote:
                 value = job.model_dump(mode="json")
                 value.update(state="succeeded", stage="publishing", completed_slides=1)
                 job = Job.model_validate(value)
-                value_manifest = manifest(job.deck_id, job.generation_id, job.source_revision, self.checksum, self.filename)
+                notes = {"state": "present", "paragraphs": ["Speaker note"], "truncated": False} if job.include_notes else {"state": "excluded", "paragraphs": [], "truncated": False}
+                if self.mismatch_notes_policy:
+                    notes = {"state": "excluded", "paragraphs": [], "truncated": False} if job.include_notes else {"state": "present", "paragraphs": ["Speaker note"], "truncated": False}
+                value_manifest = manifest(job.deck_id, job.generation_id, job.source_revision,
+                                          self.checksum, self.filename, notes)
                 if self.corrupt_manifest:
                     value_manifest["source_sha256"] = "1" * 64
                 self.manifests[job.generation_id] = value_manifest
@@ -184,6 +204,8 @@ def test_upload_idempotency_restart_and_complete_generation(tmp_path: Path) -> N
             assert deck.state == "extracted" and deck.generation_id is not None
             assert service.store.operation(accepted.operation_id).state == "succeeded"
             output = service.store.manifest(deck.deck_id)
+            assert output.content.slides[0].notes is not None
+            assert output.content.slides[0].notes.state == "present"
             assert output.content.slides[0].occurrences[0].source.text == "Native text"
             assert output.warnings[0].code == "contextual_crop"
             assert all(asset.download_url.startswith(f"/v1/decks/{deck.deck_id}/generations/") for asset in output.assets)
@@ -370,6 +392,69 @@ def test_manifest_validation_rejects_unknown_assets_and_preserves_old_snapshot(t
             assert service.store.manifest(accepted.deck_id).generation_id == original.generation_id
             await service.extraction.close()
             service.store.close()
+    asyncio.run(run())
+
+
+def test_notes_policy_is_authenticated_and_captured_for_upload(tmp_path: Path) -> None:
+    settings = Settings(tmp_path / "data", TOKEN, "http://extraction.test", EXTRACTION_TOKEN,
+                        include_notes=False)
+    app = create_app(settings, secure_storage=False, start_worker=False)
+    with TestClient(app) as client:
+        assert client.get("/v1/policy").status_code == 401
+        assert client.get("/v1/policy", headers=HEADERS).json() == {"include_notes": False}
+        accepted = client.post("/v1/decks", headers={**HEADERS, "idempotency-key": "upload"},
+                               files={"file": ("team.pptx", b"deck")})
+        assert accepted.status_code == 202
+        operation = app.state.library.store._operation(UUID(accepted.json()["operation_id"]))
+        assert operation.include_notes is False
+        assert "include_notes" not in accepted.json()
+
+
+def test_notes_contract_accepts_legacy_and_rejects_bad_states() -> None:
+    legacy = Manifest.model_validate(manifest(uuid4(), uuid4(), 1, "0" * 64, "team.pptx"))
+    assert legacy.content.slides[0].notes is None
+    invalid = manifest(uuid4(), uuid4(), 1, "0" * 64, "team.pptx",
+                       {"state": "excluded", "paragraphs": ["hidden note"], "truncated": False})
+    with pytest.raises(ValidationError):
+        Manifest.model_validate(invalid)
+
+
+def test_malformed_notes_failure_is_actionable_and_redacted(tmp_path: Path) -> None:
+    async def run() -> None:
+        remote = Remote()
+        remote.fail_notes = True
+        service = library(tmp_path / "data", remote)
+        accepted = service.store.upload(put_source(tmp_path), "team.pptx", "upload")
+        await service.reconcile_one()
+        await asyncio.sleep(0.02)
+        await service.reconcile_one()
+        deck = service.store.deck(accepted.deck_id)
+        assert deck.state == "failed"
+        assert deck.error is not None
+        assert deck.error.code == "invalid_notes"
+        assert deck.error.message == "Speaker notes could not be read. Correct the presentation and upload it again."
+        assert not deck.error.retryable
+        await service.extraction.close()
+        service.store.close()
+
+    asyncio.run(run())
+
+
+def test_library_rejects_manifest_that_ignores_captured_notes_policy(tmp_path: Path) -> None:
+    async def run() -> None:
+        remote = Remote()
+        remote.mismatch_notes_policy = True
+        service = library(tmp_path / "data", remote)
+        accepted = service.store.upload(put_source(tmp_path), "team.pptx", "upload")
+        await service.reconcile_one()
+        await asyncio.sleep(0.02)
+        await service.reconcile_one()
+        deck = service.store.deck(accepted.deck_id)
+        assert deck.state == "failed"
+        assert deck.generation_id is None
+        await service.extraction.close()
+        service.store.close()
+
     asyncio.run(run())
 
 

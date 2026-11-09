@@ -35,6 +35,7 @@ from .models import (
 )
 from .store import Store
 from .worker import Worker
+from .source import DEFAULT_NOTES_TEXT_LIMIT
 
 
 @dataclass(frozen=True)
@@ -47,20 +48,27 @@ class Settings:
     queue_limit: int = 8
     conversion_timeout: float = 180
     body_timeout: float = 30
+    notes_text_limit: int = DEFAULT_NOTES_TEXT_LIMIT
 
     def __post_init__(self) -> None:
         if len(self.token.encode()) < 32:
             raise ValueError("EX1_TOKEN must contain at least 32 bytes")
         if min(self.upload_limit, self.request_limit, self.manifest_limit, self.queue_limit,
-               self.conversion_timeout, self.body_timeout) <= 0 or self.upload_limit > self.request_limit:
+               self.conversion_timeout, self.body_timeout, self.notes_text_limit) <= 0 or self.upload_limit > self.request_limit:
             raise ValueError("Invalid service limits")
+        if self.notes_text_limit > DEFAULT_NOTES_TEXT_LIMIT:
+            raise ValueError("EX1_NOTES_TEXT_LIMIT exceeds the supported maximum")
 
     @classmethod
     def from_environment(cls) -> Settings:
         root = os.environ.get("EX1_DATA_DIR")
         if not root:
             raise ValueError("EX1_DATA_DIR must name a private local data directory")
-        return cls(data_dir=Path(root), token=os.environ.get("EX1_TOKEN", ""))
+        raw_limit = os.environ.get("EX1_NOTES_TEXT_LIMIT", str(DEFAULT_NOTES_TEXT_LIMIT))
+        if not re.fullmatch(r"[1-9][0-9]{0,3}", raw_limit):
+            raise ValueError("EX1_NOTES_TEXT_LIMIT must be a positive integer")
+        return cls(data_dir=Path(root), token=os.environ.get("EX1_TOKEN", ""),
+                   notes_text_limit=int(raw_limit))
 
 
 def private_directory(root: Path) -> None:
@@ -157,7 +165,10 @@ class Boundary:
                 await error_response(ServiceError(503, "service_unavailable", "Service could not complete this request; retry later.", True), request_id)(scope, receive, send)
 
 
-async def unavailable_extractor(source: Path, output: Path, progress: Progress) -> ExtractionResult:
+async def unavailable_extractor(
+    source: Path, output: Path, progress: Progress,
+    include_notes: bool = True, notes_text_limit: int = DEFAULT_NOTES_TEXT_LIMIT,
+) -> ExtractionResult:
     raise RuntimeError("Renderer is not configured")
 
 
@@ -184,7 +195,8 @@ def create_app(settings: Settings, *, extractor: Extractor = unavailable_extract
             private_directory(settings.data_dir)
         if initialize_renderer is not None:
             await initialize_renderer()
-        store = Store(settings.data_dir, settings.queue_limit, settings.manifest_limit)
+        store = Store(settings.data_dir, settings.queue_limit, settings.manifest_limit,
+                      settings.notes_text_limit)
         incoming = store.root / "incoming"
         incoming.mkdir(exist_ok=True)
         for path in incoming.iterdir():
@@ -235,14 +247,20 @@ def create_app(settings: Settings, *, extractor: Extractor = unavailable_extract
         content_type = request.headers.get("content-type", "")
         if not content_type.lower().startswith("multipart/form-data;"):
             raise ServiceError(415, "unsupported_type", "Upload multipart form data containing one .pptx file.")
-        async with request.form(max_files=1, max_fields=2, max_part_size=512) as form:
-            if set(form) != {"file", "source_revision", "idempotency_key"} or len(form.multi_items()) != 3:
-                raise ServiceError(400, "malformed_request", "Expected file, source_revision and idempotency_key fields exactly once.")
+        async with request.form(max_files=1, max_fields=3, max_part_size=512) as form:
+            if (set(form) not in (
+                    {"file", "source_revision", "idempotency_key"},
+                    {"file", "source_revision", "idempotency_key", "include_notes"},
+                ) or len(form.multi_items()) != len(form)):
+                raise ServiceError(400, "malformed_request", "Expected file, source_revision, idempotency_key and optional include_notes fields exactly once.")
             upload, revision, key = form["file"], form["source_revision"], form["idempotency_key"]
             if not isinstance(upload, UploadFile) or not isinstance(revision, str) or not isinstance(key, str):
                 raise ServiceError(400, "malformed_request", "Upload fields have invalid types.")
             if not re.fullmatch(r"[1-9][0-9]{0,9}", revision) or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", key):
                 raise ServiceError(400, "malformed_request", "Source revision or idempotency key is invalid.")
+            include_notes_value = form.get("include_notes", "true")
+            if not isinstance(include_notes_value, str) or include_notes_value not in ("true", "false"):
+                raise ServiceError(400, "malformed_request", "Speaker notes policy must be true or false.")
             if not upload.filename or not upload.filename.lower().endswith(".pptx"):
                 raise ServiceError(415, "unsupported_type", "Only .pptx presentations are supported.")
             store: Store = request.app.state.store
@@ -265,7 +283,8 @@ def create_app(settings: Settings, *, extractor: Extractor = unavailable_extract
                 except ValueError:
                     raise ServiceError(422, "invalid_presentation", "Presentation is invalid, unsafe or exceeds supported content limits.") from None
                 filename = upload.filename.replace("\\", "/").rsplit("/", 1)[-1]
-                job = store.submit(deck_id, int(revision), key, path, filename)
+                job = store.submit(deck_id, int(revision), key, path, filename,
+                                   include_notes=include_notes_value == "true")
                 request.app.state.worker.wake.set()
                 return job
             finally:

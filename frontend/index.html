@@ -48,8 +48,9 @@
               <p>Upload a PowerPoint file. The original stays available for download.</p>
             </div>
           </div>
+          <p id="notes-policy" class="hint"></p>
           <div class="inline-field">
-            <label class="file-picker">Choose .pptx<input id="deck-file" name="file" type="file" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation" required /></label>
+            <label class="file-picker">Choose .pptx<input id="deck-file" name="file" type="file" accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation" aria-describedby="notes-policy" required /></label>
             <span id="file-name" class="hint">No file selected</span>
             <button class="button button-accent" type="submit">Upload deck</button>
           </div>

@@ -4,6 +4,7 @@ Content routes require `Authorization: Bearer <LIBRARY_TOKEN>`. `/health` is pub
 
 | Method and path | Request | Success |
 | --- | --- | --- |
+| `GET /v1/policy` | None | 200 `{"include_notes": true}` or `false` |
 | `GET /health` | None | 200 `{"ready": true}` when the worker and database are available; otherwise `{"ready": false}` |
 | `POST /v1/decks` | Multipart `file` exactly once; `Idempotency-Key` header | 202 `Accepted` |
 | `GET /v1/decks` | None | 200 array of active `Deck` records, newest first |
@@ -30,11 +31,13 @@ States are `queued`, `processing`, `extracted`, `failed`, `deleting`, and `delet
 
 `Operation` contains `operation_id`, `deck_id`, `kind` of `extract`, `retry`, or `delete`, `state` of `pending`, `processing`, `succeeded`, `failed`, or `cancelled`, `phase`, `source_revision`, progress counts, `stage`, `error`, `warnings`, timestamps, and its `status_url`. Previously accepted operation IDs remain observable after supersession.
 
+`GET /v1/policy` reports the authenticated deployment-wide `LIBRARY_INCLUDE_NOTES` setting. It defaults to `true`. Uploads and reprocessing capture the setting when the operation is accepted. Retrying an operation keeps its captured value. Changing the setting applies to new uploads and reprocessing. The frontend reads this route before upload and shows whether speaker notes enter extracted content. The preserved original still contains its notes under either setting.
+
 Retry accepts only the current failed operation with `error.retryable=true`. It preserves the revision. A failed extraction job uses extraction's keyed retry endpoint. A transport failure resumes the same recorded submission or polling request, so an uncertain response cannot duplicate attempts. Reprocessing increments the revision and submits the same immutable original with a new stable request key. Both operations retain the previous complete generation until a replacement is validated.
 
 ## Manifests and downloads
 
-The manifest follows [extraction API v1](../powerpoint-extraction/API.md). The library independently validates its schema, deck, revision, generation, source checksum, safe filename, asset references, rendition roles, and warning references before publication. `canonical_original_reference` becomes the library original-download route. Every asset `download_url` becomes a generation-bound library route. Extraction service credentials and private paths are absent.
+The manifest follows [extraction API v1](../powerpoint-extraction/API.md). The library independently validates its schema, deck, revision, generation, source checksum, safe filename, slide notes, asset references, rendition roles, and warning references before publication. It rejects a completed new operation when the manifest's notes states do not match the captured policy. A missing or null notes value remains valid in a historical manifest and means unknown. `canonical_original_reference` becomes the library original-download route. Every asset `download_url` becomes a generation-bound library route. Extraction service credentials and private paths are absent.
 
 One response describes one complete generation. An old generation selector returns 404 after library replacement. Extraction can retire an old generation just before library status updates, so an old asset download may return a conflict. Refresh the complete deck and manifest in that case. Do not combine old text and new images.
 
@@ -70,7 +73,7 @@ Errors have this shape:
 | 422 | Empty upload |
 | 503 | Canonical original unavailable, temporary upstream download failure, invalid persisted metadata, or library storage unavailable |
 
-Accepted processing failures appear in a 200 status response with a safe structured error. No traceback, credentials, internal endpoint, private path, or slide text appears in errors. Five consecutive transient processing failures exhaust automatic retries and leave a retryable failed operation. An extraction 429 keeps work queued and waits for capacity with capped backoff. Delete operations retain their fence and retry cleanup indefinitely with capped backoff. Default limits and timeout values are in the README.
+Accepted processing failures appear in a 200 status response with a safe structured error. `invalid_notes` tells the caller to correct and upload the source presentation again. No traceback, credentials, internal endpoint, private path, or slide text appears in errors. Five consecutive transient processing failures exhaust automatic retries and leave a retryable failed operation. An extraction 429 keeps work queued and waits for capacity with capped backoff. Delete operations retain their fence and retry cleanup indefinitely with capped backoff. Default limits and timeout values are in the README.
 
 Database errors use HTTP 503 with code `storage_unavailable` and a restart instruction. The service does not replay a mutation after a connection loss because PostgreSQL may have committed it before the response was lost. Repeat the request with its original idempotency key after restart, or poll the operation URL returned by the original request. Storage credentials and connection details never appear in HTTP responses.
 

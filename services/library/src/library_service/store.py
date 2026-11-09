@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Literal, cast
 from uuid import UUID, uuid4
 
-from pydantic import model_validator
+from pydantic import StrictBool, model_validator
 
 from .models import Accepted, Deck, DeckState, DeletionStatus, ErrorDetail, Job, Manifest, Operation, Record, ServiceError
 from .metadata import Metadata
@@ -45,6 +45,7 @@ class StoredDeck(Record):
 class StoredOperation(Operation):
     fence: int
     remote_key: str
+    include_notes: StrictBool | None = None
     parent_job: UUID | None = None
     job: Job | None = None
     retries: int = 0
@@ -52,7 +53,7 @@ class StoredOperation(Operation):
 
     def public(self) -> Operation:
         return Operation.model_validate(self.model_dump(exclude={
-            "fence", "remote_key", "parent_job", "job", "retries", "due"
+            "fence", "remote_key", "include_notes", "parent_job", "job", "retries", "due"
         }))
 
 
@@ -63,8 +64,9 @@ class Work(Record):
 
 class Store:
     def __init__(self, root: Path, backend: Literal["sqlite", "postgresql"] = "sqlite",
-                 dsn: str | None = None) -> None:
+                 dsn: str | None = None, include_notes: bool = True) -> None:
         self.root = root.resolve()
+        self.include_notes = include_notes
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.lock = threading.RLock()
         self.lock_file = (self.root / "owner.lock").open("a+b")
@@ -186,6 +188,7 @@ class Store:
         return StoredOperation(operation_id=identifier, deck_id=deck_id, kind=kind,
                                state="pending", phase=phase, source_revision=revision,
                                fence=fence, remote_key=str(identifier), created_at=timestamp,
+                               include_notes=self.include_notes if kind == "extract" else None,
                                updated_at=timestamp, due=time.time(), status_url=f"/v1/operations/{identifier}")
 
     @staticmethod
@@ -270,6 +273,7 @@ class Store:
                 phase = "retry" if remote_failed or remote_retry else ("poll" if old.job else "submit")
                 operation = self._new_operation(identifier, deck.source_revision, deck.fence + 1,
                                                 "retry", cast(Literal["submit", "retry", "poll"], phase))
+                operation.include_notes = old.include_notes
                 operation.parent_job = old.job.job_id if remote_failed and old.job else old.parent_job if remote_retry else None
                 operation.job = None if remote_failed or remote_retry else old.job
                 if not remote_failed:

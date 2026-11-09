@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import posixpath
 from io import BytesIO
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal
@@ -12,18 +13,49 @@ from zipfile import BadZipFile, ZipFile
 from lxml import etree  # type: ignore[import-untyped]
 from PIL import Image
 from pptx import Presentation
-from pydantic import BaseModel, ConfigDict, Field
+from pptx.enum.shapes import PP_PLACEHOLDER
+from pptx.opc.constants import RELATIONSHIP_TYPE as RT
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 NS = {
     "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
     "p": "http://schemas.openxmlformats.org/presentationml/2006/main",
 }
+REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 Matrix = tuple[float, float, float, float, float, float]
 IDENTITY: Matrix = (1, 0, 0, 1, 0, 0)
+DEFAULT_NOTES_TEXT_LIMIT = 4096
+NOTES_PARSER_REVISION = "python-pptx-notes-v1"
 
 
 class Record(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+
+class Notes(Record):
+    state: Literal["present", "empty", "excluded"]
+    paragraphs: list[str]
+    truncated: StrictBool
+
+    @classmethod
+    def empty(cls, state: Literal["empty", "excluded"] = "empty") -> Notes:
+        return cls(state=state, paragraphs=[], truncated=False)
+
+    @model_validator(mode="after")
+    def consistent(self) -> Notes:
+        size = sum(map(len, self.paragraphs)) + max(0, len(self.paragraphs) - 1)
+        if size > DEFAULT_NOTES_TEXT_LIMIT:
+            raise ValueError("Speaker notes exceed the supported limit")
+        if self.state in ("empty", "excluded"):
+            if self.paragraphs or self.truncated:
+                raise ValueError("Empty or excluded notes cannot contain text")
+        elif not self.paragraphs or (not self.truncated and not any(item.strip() for item in self.paragraphs)):
+            raise ValueError("Present notes require speaker text")
+        return self
+
+
+class NotesError(ValueError):
+    pass
 
 
 class TextBlock(Record):
@@ -67,6 +99,7 @@ class Slide(Record):
     hidden: bool
     width: int = Field(gt=0)
     height: int = Field(gt=0)
+    notes: Notes | None = None
     occurrences: list[Occurrence]
 
 
@@ -213,8 +246,124 @@ def validate_upload(path: Path) -> None:
         raise ValueError("Invalid presentation package") from error
 
 
-def inspect(path: Path, asset_directory: Path | None = None) -> Inventory:
+def _limited_paragraphs(paragraphs: list[str], limit: int) -> tuple[list[str], bool]:
+    result: list[str] = []
+    remaining = limit
+    truncated = False
+    for index, paragraph in enumerate(paragraphs):
+        separator = 1 if index else 0
+        if separator > remaining:
+            truncated = True
+            break
+        remaining -= separator
+        if len(paragraph) <= remaining:
+            result.append(paragraph)
+            remaining -= len(paragraph)
+        else:
+            result.append(paragraph[:remaining])
+            truncated = True
+            break
+    if len(result) < len(paragraphs):
+        truncated = True
+    return result, truncated
+
+
+def _slide_notes(slide: Any, include_notes: bool, limit: int,
+                 package_members: set[str], notes_parts: set[str]) -> Notes:
+    if not include_notes:
+        return Notes.empty("excluded")
+    relationships = [
+        relationship
+        for relationship in slide.part.rels.values()
+        if relationship.reltype == RT.NOTES_SLIDE
+    ]
+    has_notes_part = str(slide.part.partname).lstrip("/") in notes_parts
+    if not has_notes_part and not relationships:
+        return Notes.empty()
+    if not has_notes_part or len(relationships) != 1:
+        raise NotesError("Speaker notes are malformed.")
+    try:
+        relationship = relationships[0]
+        if relationship.is_external:
+            raise NotesError("Speaker notes are malformed.")
+        target_ref = relationship.target_ref
+        if any(char in target_ref for char in ("\\", ":", "?", "#", "\x00")):
+            raise NotesError("Speaker notes are malformed.")
+        slide_part = str(slide.part.partname).lstrip("/")
+        target = PurePosixPath(target_ref)
+        member = posixpath.normpath(
+            target.as_posix().lstrip("/") if target.is_absolute()
+            else posixpath.join(posixpath.dirname(slide_part), target.as_posix())
+        )
+        if member == ".." or member.startswith("../") or member not in package_members:
+            raise NotesError("Speaker notes are malformed.")
+        target_part = relationship.target_part
+        if (target_part.content_type != "application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml"
+                or target_part._element.tag != f"{{{NS['p']}}}notes"):
+            raise NotesError("Speaker notes are malformed.")
+        notes_slide = slide.notes_slide
+        body_placeholders = [
+            shape
+            for shape in notes_slide.placeholders
+            if shape.placeholder_format.type == PP_PLACEHOLDER.BODY
+        ]
+        if len(body_placeholders) > 1:
+            raise NotesError("Speaker notes are malformed.")
+        text_frame = notes_slide.notes_text_frame
+        if text_frame is None:
+            return Notes.empty()
+        paragraphs = [
+            paragraph.text.replace("\r\n", "\n").replace("\r", "\n")
+            for paragraph in text_frame.paragraphs
+        ]
+    except NotesError:
+        raise
+    except Exception:
+        raise NotesError("Speaker notes are malformed.") from None
+    if not any(paragraph.strip() for paragraph in paragraphs):
+        return Notes.empty()
+    limited, truncated = _limited_paragraphs(paragraphs, limit)
+    return Notes(state="present", paragraphs=limited, truncated=truncated)
+
+
+def inspect(
+    path: Path,
+    asset_directory: Path | None = None,
+    *,
+    include_notes: bool = True,
+    notes_text_limit: int = DEFAULT_NOTES_TEXT_LIMIT,
+) -> Inventory:
+    if not 1 <= notes_text_limit <= DEFAULT_NOTES_TEXT_LIMIT:
+        raise ValueError("Speaker notes text limit is invalid")
     checked_archive(path)
+    with ZipFile(path) as archive:
+        package_members = {item.filename for item in archive.infolist()}
+        notes_parts: set[str] = set()
+        for name in (package_members if include_notes else ()):
+            if not name.startswith("ppt/slides/_rels/") or not name.endswith(".rels"):
+                continue
+            root = etree.fromstring(archive.read(name), etree.XMLParser(resolve_entities=False, no_network=True))
+            relations = [
+                relationship
+                for relationship in root.findall(f"{{{REL_NS}}}Relationship")
+                if relationship.get("Type") == RT.NOTES_SLIDE
+            ]
+            if not relations:
+                continue
+            source_part = f"ppt/slides/{PurePosixPath(name).name[:-5]}"
+            if len(relations) != 1:
+                raise NotesError("Speaker notes are malformed.")
+            target_ref = relations[0].get("Target", "")
+            if any(char in target_ref for char in ("\\", ":", "?", "#", "\x00")):
+                raise NotesError("Speaker notes are malformed.")
+            target = PurePosixPath(target_ref)
+            member = posixpath.normpath(
+                target.as_posix().lstrip("/") if target.is_absolute()
+                else posixpath.join(posixpath.dirname(source_part), target.as_posix())
+            )
+            if member == ".." or member.startswith("../") or member not in package_members:
+                raise NotesError("Speaker notes are malformed.")
+            notes_parts.add(source_part)
     presentation = Presentation(str(path))
     if len(presentation.slides) > 100:
         raise ValueError("Presentation exceeds 100-slide proof limit")
@@ -389,6 +538,8 @@ def inspect(path: Path, asset_directory: Path | None = None) -> Inventory:
                 hidden=slide._element.get("show") == "0",
                 width=int(presentation.slide_width or 0),
                 height=int(presentation.slide_height or 0),
+                notes=_slide_notes(slide, include_notes, notes_text_limit,
+                                   package_members, notes_parts),
                 occurrences=occurrences,
             )
         )

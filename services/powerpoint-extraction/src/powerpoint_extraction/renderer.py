@@ -25,7 +25,14 @@ from .content import (
 )
 from .models import ExtractionFailure, ExtractionResult, OutputAsset, Stage
 from .proof import map_outcomes
-from .source import Record, inspect, stamp_copy
+from .source import (
+    DEFAULT_NOTES_TEXT_LIMIT,
+    NOTES_PARSER_REVISION,
+    NotesError,
+    Record,
+    inspect,
+    stamp_copy,
+)
 
 
 class RendererObject(Record):
@@ -99,12 +106,21 @@ class Renderer:
             self.ready = False
 
     async def __call__(
-        self, source: Path, output: Path, progress: Callable[[Stage, int, int], None] | None = None
+        self,
+        source: Path,
+        output: Path,
+        progress: Callable[[Stage, int, int], None] | None = None,
+        include_notes: bool = True,
+        notes_text_limit: int = DEFAULT_NOTES_TEXT_LIMIT,
     ) -> ExtractionResult:
         if not self.ready:
             raise RuntimeError("Renderer confinement is not ready")
         output.mkdir(parents=True, exist_ok=True)
-        inventory = inspect(source, output / "original-assets")
+        try:
+            inventory = inspect(source, output / "original-assets", include_notes=include_notes,
+                                notes_text_limit=notes_text_limit)
+        except NotesError:
+            raise ExtractionFailure("invalid_notes", "Speaker notes are malformed; verify the deck and retry.") from None
         if any(item.warning and "inherited placeholder field" in item.warning for slide in inventory.slides for item in slide.occurrences):
             raise ExtractionFailure("unsupported_inherited_fields", "Inherited date, footer or slide-number fields cannot be resolved safely. Replace them with ordinary text and upload a new revision.")
         if not inventory.slides:
@@ -287,14 +303,21 @@ class Renderer:
                 slides.append(
                     SlideContent(
                         source=SlideSource.model_validate(
-                            slide.model_dump(exclude={"occurrences"})
+                            slide.model_dump(exclude={"occurrences", "notes"})
                         ),
+                        notes=slide.notes,
                         preview=preview,
                         occurrences=occurrences,
                     )
                 )
         fingerprint = hashlib.sha256(
-            json.dumps({"bridge": self.bridge, "office": self.office}, sort_keys=True).encode()
+            json.dumps({
+                "bridge": self.bridge,
+                "office": self.office,
+                "include_notes": include_notes,
+                "notes_text_limit": notes_text_limit,
+                "notes_parser_revision": NOTES_PARSER_REVISION,
+            }, sort_keys=True).encode()
         ).hexdigest()
         content = ExtractionContent(
             extractor_version="0.1.0",

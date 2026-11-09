@@ -7,7 +7,7 @@ The authoritative generated response schemas are the Pydantic records in `models
 | Method and path | Request | Success |
 | --- | --- | --- |
 | `GET /health` | None | 200 `Health` with `ready` only |
-| `POST /v1/decks/{deck_id}/extractions` | Multipart `file`, `source_revision`, `idempotency_key` exactly once each | 202 `Job` |
+| `POST /v1/decks/{deck_id}/extractions` | Multipart `file`, `source_revision`, `idempotency_key` exactly once each, optional `include_notes` (`true` or `false`) | 202 `Job` |
 | `GET /v1/jobs/{job_id}` | None | 200 `Job` |
 | `POST /v1/jobs/{job_id}/retry` | Empty body; optional `Idempotency-Key` header | 202 `Job` |
 | `GET /v1/decks/{deck_id}/manifest` | Optional UUID query `generation` | 200 `Manifest` |
@@ -19,17 +19,19 @@ All IDs are UUIDs. Source revision is a positive decimal integer of at most ten 
 
 ## Job and revision behavior
 
-`Job` contains `job_id`, `deck_id`, `source_revision`, `generation_id`, `state`, `stage`, `attempt`, `completed_slides`, `total_slides`, UTC `created_at` and `updated_at`, optional structured `error`, `warnings`, `status_url`, and optional `manifest_url`.
+`Job` contains `job_id`, `deck_id`, `source_revision`, `generation_id`, captured `include_notes` and `notes_text_limit`, `state`, `stage`, `attempt`, `completed_slides`, `total_slides`, UTC `created_at` and `updated_at`, optional structured `error`, `warnings`, `status_url`, and optional `manifest_url`.
 
 States are `queued`, `processing`, `succeeded`, `failed`, and `cancelled`. Stages are `queued`, `extracting`, `rendering`, and `publishing`. Counts start at zero and the adapter supplies the known total after source inspection. Rendering counts describe the batch before and after conversion. Publication marks all slides complete. A succeeded extraction means complete extraction only, not embedding or search indexing.
 
-Poll once per second initially and back off for long jobs. Honor queue saturation by retrying later. A network timeout during submission is safe to retry with the same idempotency key and identical bytes and revision. The digest includes the API processing version, revision, and exact source checksum. The same key with changed input returns 409. Duplicate input for the same current revision returns its existing job. Changing bytes without increasing revision returns 409. An older revision returns 409 unless it is the exact replay of a persisted idempotency request. A newer revision cancels older unfinished jobs and preserves the old complete generation until replacement succeeds.
+Poll once per second initially and back off for long jobs. Honor queue saturation by retrying later. A network timeout during submission is safe to retry with the same idempotency key and identical bytes and revision. The digest includes the API processing version, revision, exact source checksum, filename, notes policy, and current text cap. The same key with changed input returns 409. Duplicate input for the same current revision returns its existing job only when the notes policy and cap match. Changing bytes or notes configuration without increasing revision returns 409. An older revision returns 409 unless it is the exact replay of a persisted idempotency request. A newer revision cancels older unfinished jobs and preserves the old complete generation until replacement succeeds. Replayed keys created before notes support retain their original job.
 
 Retry accepts only the current failed job with `error.retryable=true`. It creates a new job and generation ID, increases `attempt`, and reuses the revision's work copy. When supplied, `Idempotency-Key` uses the same 1 to 128 character syntax as extraction submission and binds the new job to the parent job ID. Repeating the request with that key returns the same new job, including after another attempt has become current. Reusing the key for a different request returns 409. Without the header, repeating retry on the old job returns 409. A retry against a deleted job returns 404 because deletion removes job records. An old submission idempotency request continues to identify the original attempt.
 
 ## Manifests and downloads
 
-`Manifest` contains `schema_version=1`, `deck_id`, `source_revision`, `generation_id`, `source_sha256`, `source_filename`, nullable `canonical_original_reference`, runtime-validated source and rendition `content`, `assets`, and structured `warnings`. Publication and manifest reads validate the content schema and verify that every referenced asset exists in that generation. A malformed or inconsistent stored generation returns 503 and is not reported as complete.
+`Manifest` contains `schema_version=1`, `deck_id`, `source_revision`, `generation_id`, `source_sha256`, `source_filename`, nullable `canonical_original_reference`, runtime-validated source and rendition `content`, `assets`, and structured `warnings`. Each new slide has a separate `notes` record with `state` (`present`, `empty`, or `excluded`), ordered `paragraphs`, and `truncated`. A missing or null `notes` value is valid only as a legacy manifest and does not mean that the slide has no notes. Notes stay outside source occurrences and assets. Publication and manifest reads validate the content schema and verify that every referenced asset exists in that generation. A malformed or inconsistent stored generation returns 503 and is not reported as complete.
+
+The extractor reads only the slide's speaker notes body through python-pptx's `notes_text_frame` accessor. It checks the notes relationship target before using the accessor. It preserves paragraph order and Unicode, normalizes line endings, and includes hidden slides. It ignores notes page shapes, notes master text, comments, and the notes page image, number, date, header, and footer placeholders. The default `EX1_NOTES_TEXT_LIMIT` is 4096 Unicode code points per slide, including paragraph boundaries. Set a smaller positive integer to lower the cap. Values above 4096 are rejected. Truncated notes set `truncated=true`; malformed notes fail the job with `invalid_notes` and do not expose note text.
 
 Each asset contains opaque `asset_id`, adapter-local `local_id`, `media_type`, `role`, positive `byte_length`, SHA-256 `sha256`, and relative authenticated `download_url`. Roles distinguish `slide_preview`, `original_picture`, `isolated_render`, `group_render`, and `contextual_crop`. Original embedded bytes remain separate from rendered renditions. Raster metadata records actual pixel dimensions and transparency. The generation selector is constrained to the same deck. Guessed and unpublished asset IDs return 404.
 
@@ -62,7 +64,7 @@ Errors have this envelope. `stage` is null for request errors and identifies the
 | 429 | `queue_full` | Queued and processing jobs fill the configured queue |
 | 503 | `renderer_unavailable`, `service_unavailable`, `manifest_unavailable`, `asset_unavailable` | Missing confined renderer, unavailable local dependency, or invalid stored output |
 
-Accepted processing failures appear in the 200 job response. Codes are `conversion_failed`, `conversion_timeout`, `worker_stopped`, and `worker_interrupted`. They are retryable. Private exception messages never enter responses. Cleanup can report retryable `cleanup_failed` while remaining pending.
+Accepted processing failures appear in the 200 job response. Codes include `conversion_failed`, `conversion_timeout`, `worker_stopped`, `worker_interrupted`, and non-retryable `invalid_notes`. Conversion and interruption failures are retryable. Private exception messages never enter responses. Cleanup can report retryable `cleanup_failed` while remaining pending.
 
 Default limits are documented in the README. The complete request limit runs before multipart parsing even when Content-Length is missing. Multipart permits one file and two fields, bounds field parts to 512 bytes, and rejects repeated or extra fields. The worker runs one extraction at a time. Authentication and size rejection happen before presentation inspection.
 

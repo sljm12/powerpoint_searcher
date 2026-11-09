@@ -27,7 +27,15 @@ class Worker:
                 continue
             self.active = claim
             progress: Progress = partial(self.store.update_progress, claim)
-            task = asyncio.create_task(self.extractor(claim.source_path, claim.output_path, progress))
+            task = asyncio.create_task(
+                self.extractor(
+                    claim.source_path,
+                    claim.output_path,
+                    progress,
+                    claim.job.include_notes,
+                    claim.job.notes_text_limit,
+                )
+            )
             started = asyncio.get_running_loop().time()
             timed_out = False
             try:

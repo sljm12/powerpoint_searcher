@@ -77,10 +77,12 @@ class Extraction:
         except (ValueError, json.JSONDecodeError):
             raise UpstreamError("invalid_extraction_response", "Extraction returned malformed JSON.") from None
 
-    async def submit(self, deck_id: UUID, revision: int, key: str, source: Path, filename: str) -> Job:
+    async def submit(self, deck_id: UUID, revision: int, key: str, source: Path,
+                     filename: str, include_notes: bool) -> Job:
         with source.open("rb") as handle:
             value = await self._json("POST", f"/v1/decks/{deck_id}/extractions",
-                                     data={"source_revision": str(revision), "idempotency_key": key},
+                                     data={"source_revision": str(revision), "idempotency_key": key,
+                                           "include_notes": str(include_notes).lower()},
                                      files={"file": (filename, handle, "application/vnd.openxmlformats-officedocument.presentationml.presentation")})
         return self._job(value)
 

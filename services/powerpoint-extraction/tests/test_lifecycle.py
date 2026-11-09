@@ -19,6 +19,7 @@ from PIL import Image
 from powerpoint_extraction.api import Settings, create_app
 from powerpoint_extraction.content import ExtractionContent, Rendition, SlideContent, SlideSource
 from powerpoint_extraction.models import ExtractionResult, OutputAsset, Progress, ServiceError
+from powerpoint_extraction.source import Notes
 from powerpoint_extraction.store import Store
 
 TOKEN = "test-secret-which-is-at-least-32-bytes"
@@ -31,14 +32,19 @@ IMAGE_BYTES = IMAGE_BUFFER.getvalue()
 def valid_content() -> ExtractionContent:
     return ExtractionContent(extractor_version="test", renderer_version="test", config_fingerprint="0" * 64,
                              slides=[SlideContent(source=SlideSource(number=1, source_slide_id=1, hidden=False, width=100, height=100),
+                             notes=Notes.empty(),
                              preview=Rendition(asset_local_id="preview", status="rendered", method="slide_render", pixel_size=(2, 2), transparent=False), occurrences=[])])
 
 
-async def good(source: Path, output: Path, progress: Progress) -> ExtractionResult:
+async def good(source: Path, output: Path, progress: Progress,
+               include_notes: bool = True, notes_text_limit: int = 4096) -> ExtractionResult:
     progress("rendering", 0, 1)
     (output / "preview.png").write_bytes(IMAGE_BYTES)
     progress("rendering", 1, 1)
-    return ExtractionResult(content=valid_content(),
+    content = valid_content()
+    if not include_notes:
+        content.slides[0].notes = Notes.empty("excluded")
+    return ExtractionResult(content=content,
                             assets=[OutputAsset(local_id="preview", relative_path="preview.png",
                                                 media_type="image/png", role="slide_preview", pixel_size=(2, 2))], slide_count=1)
 
@@ -48,10 +54,14 @@ def validate(path: Path) -> None:
         raise ValueError("secret content must not escape")
 
 
-def upload(client: TestClient, deck: UUID, revision: int = 1, key: str = "first", data: bytes = b"deck") -> Any:
+def upload(client: TestClient, deck: UUID, revision: int = 1, key: str = "first",
+           data: bytes = b"deck", include_notes: bool | None = None) -> Any:
+    fields = {"source_revision": str(revision), "idempotency_key": key}
+    if include_notes is not None:
+        fields["include_notes"] = str(include_notes).lower()
     return client.post(f"/v1/decks/{deck}/extractions", headers=HEADERS,
                        files={"file": ("deck.pptx", data)},
-                       data={"source_revision": str(revision), "idempotency_key": key})
+                       data=fields)
 
 
 def poll(client: TestClient, url: str, field: str = "state", final: tuple[str, ...] = ("succeeded", "failed")) -> dict[str, Any]:
@@ -105,10 +115,49 @@ def test_upload_duplicate_conflict_download_delete(tmp_path: Path) -> None:
             assert app.state.store.db.execute("SELECT revision,checksum,filename,current_job,active_generation FROM decks").fetchone()[:] == (None, None, None, None, None)
 
 
+def test_notes_policy_is_captured_and_applied_to_manifest(tmp_path: Path) -> None:
+    app = create_app(Settings(tmp_path, TOKEN), extractor=good, ready=lambda: True,
+                     validate_upload=validate, secure_storage=False)
+    included, excluded = uuid4(), uuid4()
+    with TestClient(app) as client:
+        included_job = poll(client, upload(client, included).json()["status_url"])
+        assert included_job["include_notes"] is True
+        assert included_job["notes_text_limit"] == 4096
+        included_notes = client.get(included_job["manifest_url"], headers=HEADERS).json()["content"]["slides"][0]["notes"]
+        assert included_notes["state"] == "empty"
+        excluded_job = poll(client, upload(client, excluded, include_notes=False).json()["status_url"])
+        assert excluded_job["include_notes"] is False
+        excluded_notes = client.get(excluded_job["manifest_url"], headers=HEADERS).json()["content"]["slides"][0]["notes"]
+        assert excluded_notes == {"state": "excluded", "paragraphs": [], "truncated": False}
+        assert upload(client, included, include_notes=False, key="policy-change").status_code == 409
+
+
+def test_retry_keeps_policy_and_text_limit_after_restart(tmp_path: Path) -> None:
+    root = tmp_path / "data"
+    source = tmp_path / "source.pptx"
+    source.write_bytes(b"deck")
+    store = Store(root, notes_text_limit=73)
+    original = store.submit(uuid4(), 1, "key", source, include_notes=False)
+    claim = store.claim()
+    assert claim is not None
+    store.fail(claim, "test_failure", "safe failure")
+    retry = store.retry(original.job_id)
+    store.close()
+
+    reopened = Store(root, notes_text_limit=9)
+    try:
+        persisted = reopened.get_job(retry.job_id)
+        assert persisted.include_notes is False
+        assert persisted.notes_text_limit == 73
+    finally:
+        reopened.close()
+
+
 def test_failed_retry_and_timeout(tmp_path: Path) -> None:
     attempts = 0
 
-    async def fails_once(source: Path, output: Path, progress: Progress) -> ExtractionResult:
+    async def fails_once(source: Path, output: Path, progress: Progress,
+                         include_notes: bool = True, notes_text_limit: int = 4096) -> ExtractionResult:
         nonlocal attempts
         attempts += 1
         if attempts == 1:
@@ -131,7 +180,8 @@ def test_failed_retry_and_timeout(tmp_path: Path) -> None:
         assert client.post(first["status_url"] + "/retry", headers=retry_headers).json()["job_id"] == retried.json()["job_id"]
         assert client.post(first["status_url"] + "/retry", headers=HEADERS).status_code == 409
 
-    async def hangs(source: Path, output: Path, progress: Progress) -> ExtractionResult:
+    async def hangs(source: Path, output: Path, progress: Progress,
+                    include_notes: bool = True, notes_text_limit: int = 4096) -> ExtractionResult:
         await asyncio.sleep(10)
         return await good(source, output, progress)
 
@@ -144,7 +194,8 @@ def test_failed_retry_and_timeout(tmp_path: Path) -> None:
 def test_old_generation_and_deletion_awaits_cancellation(tmp_path: Path) -> None:
     cancelled = False
 
-    async def slow(source: Path, output: Path, progress: Progress) -> ExtractionResult:
+    async def slow(source: Path, output: Path, progress: Progress,
+                   include_notes: bool = True, notes_text_limit: int = 4096) -> ExtractionResult:
         nonlocal cancelled
         if source.read_bytes() == b"new":
             progress("rendering", 0, 1)
@@ -229,7 +280,8 @@ def test_restart_fences_and_atomic_generation_switch(tmp_path: Path) -> None:
 
 
 def test_boundary_validation_and_queue_limits(tmp_path: Path) -> None:
-    async def slow(source: Path, output: Path, progress: Progress) -> ExtractionResult:
+    async def slow(source: Path, output: Path, progress: Progress,
+                   include_notes: bool = True, notes_text_limit: int = 4096) -> ExtractionResult:
         await asyncio.sleep(10)
         return await good(source, output, progress)
 

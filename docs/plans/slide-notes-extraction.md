@@ -39,16 +39,18 @@ Preserve paragraph order and Unicode. Normalize XML line endings, but do not mer
 7. Reprocess existing decks through the existing per-deck reprocess route. It increments the source revision and submits the preserved original again. The old complete generation remains active if the replacement fails. No bulk reprocessing endpoint is part of this feature.
 8. Keep notes out of logs and errors. Existing deletion must revoke notes with the manifest and prevent a late job from restoring them.
 
+The current implementation uses python-pptx's `notes_text_frame` accessor after validating the slide's notes relationship and target. `EX1_NOTES_TEXT_LIMIT` defaults to 4096 Unicode code points per slide, including paragraph boundaries, and cannot exceed 4096. The extraction job stores the selected notes policy and limit so retries and restarts use the accepted values. The library setting is `LIBRARY_INCLUDE_NOTES`, which defaults to `true` and is reported by authenticated `GET /v1/policy`.
+
 ## Affected modules and files
 
-- `services/powerpoint-extraction/src/powerpoint_extraction/source.py` reads note paragraphs into the source inventory.
+- `services/powerpoint-extraction/src/powerpoint_extraction/source.py` reads bounded note paragraphs into the source inventory.
 - `services/powerpoint-extraction/src/powerpoint_extraction/content.py` and `renderer.py` carry notes into the slide content without creating renderer objects or assets.
-- `services/powerpoint-extraction/src/powerpoint_extraction/models.py` and `store.py` validate and persist the new field and job policy.
+- `services/powerpoint-extraction/src/powerpoint_extraction/models.py`, `store.py`, and `worker.py` validate, persist, and apply the captured job policy and text cap.
 - `services/powerpoint-extraction/src/powerpoint_extraction/api.py`, `API.md`, and `README.md` accept and document the per-job policy and text cap.
-- `services/powerpoint-extraction/tests/` and fixture documentation cover extraction behavior, response shape, policy, and limits.
-- `services/library/src/library_service/models.py`, `api.py`, `extraction.py`, and `API.md` configure and report the policy, send it with extraction requests, and validate the same manifest field.
+- `services/powerpoint-extraction/src/powerpoint_extraction/fixtures.py`, `tests/test_notes.py`, lifecycle tests, and fixture documentation cover extraction behavior, response shape, policy, and limits.
+- `services/library/src/library_service/models.py`, `api.py`, `store.py`, `service.py`, `extraction.py`, and `API.md` configure and report the policy, capture it with operations, send it with extraction requests, and validate the same manifest field.
 - `services/library/tests/test_library.py` proves the service-to-service contract, legacy compatibility, reprocessing, and deletion behavior.
-- `frontend/src/client.ts` reads the policy and `frontend/src/main.ts` reports it before upload. The gallery does not display note text. The search index consumes the separate notes channel by default.
+- `frontend/src/client.ts` reads the policy and `frontend/src/main.ts` reports it before upload. The gallery does not display note text. The manifest provides a separate notes channel for a future search index; the current application has no search index.
 - `docs/plans/powerpoint-extraction.md` links to this plan and no longer lists speaker notes as deferred work.
 
 ## Work sequence

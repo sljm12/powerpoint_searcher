@@ -25,7 +25,7 @@ from starlette.exceptions import HTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .extraction import Extraction
-from .models import Accepted, Deck, DeletionStatus, Manifest, Operation, ServiceError
+from .models import Accepted, Deck, DeletionStatus, Manifest, Operation, ServiceError, UploadPolicy
 from .metadata import StorageUnavailable
 from .service import Library
 from .store import Store
@@ -48,6 +48,7 @@ class Settings:
     allowed_origins: tuple[str, ...] = ()
     database_backend: Literal["sqlite", "postgresql"] = "sqlite"
     postgres_dsn: str | None = None
+    include_notes: bool = True
 
     def __post_init__(self) -> None:
         if any(len(token.encode()) < 32 or not token.isascii() or any(ord(c) < 33 or ord(c) > 126 for c in token)
@@ -76,12 +77,16 @@ class Settings:
         if not root:
             raise ValueError("Set LIBRARY_DATA_DIR to a dedicated private directory")
         backend = os.environ.get("LIBRARY_DB_BACKEND", "sqlite").strip().lower()
+        raw_notes_policy = os.environ.get("LIBRARY_INCLUDE_NOTES", "true").strip().lower()
+        if raw_notes_policy not in ("true", "false"):
+            raise ValueError("LIBRARY_INCLUDE_NOTES must be true or false")
         return cls(data_dir=Path(root), token=os.environ.get("LIBRARY_TOKEN", ""),
                    extraction_url=os.environ.get("EXTRACTION_URL", "http://127.0.0.1:8001"),
                    extraction_token=os.environ.get("EX1_TOKEN", ""),
                    allowed_origins=tuple(origin.strip() for origin in os.environ.get("LIBRARY_ORIGINS", "").split(",") if origin.strip()),
                    database_backend=cast(Literal["sqlite", "postgresql"], backend),
-                   postgres_dsn=os.environ.get("LIBRARY_POSTGRES_DSN"))
+                   postgres_dsn=os.environ.get("LIBRARY_POSTGRES_DSN"),
+                   include_notes=raw_notes_policy == "true")
 
 
 def private_directory(root: Path) -> None:
@@ -195,7 +200,8 @@ def create_app(settings: Settings, transport: httpx.AsyncBaseTransport | None = 
         extraction: Extraction | None = None
         task: asyncio.Task[None] | None = None
         try:
-            store = Store(settings.data_dir, settings.database_backend, settings.postgres_dsn)
+            store = Store(settings.data_dir, settings.database_backend, settings.postgres_dsn,
+                          settings.include_notes)
             extraction = Extraction(settings.extraction_url, settings.extraction_token,
                                     settings.request_timeout, settings.manifest_limit,
                                     settings.asset_limit, transport)
@@ -253,6 +259,10 @@ def create_app(settings: Settings, transport: httpx.AsyncBaseTransport | None = 
     async def decks(request: Request) -> list[Deck]:
         library: Library = request.app.state.library
         return library.store.decks()
+
+    @app.get("/v1/policy", response_model=UploadPolicy)
+    async def policy() -> UploadPolicy:
+        return UploadPolicy(include_notes=settings.include_notes)
 
     @app.get("/v1/deletions", response_model=list[DeletionStatus])
     async def deletions(request: Request) -> list[DeletionStatus]:

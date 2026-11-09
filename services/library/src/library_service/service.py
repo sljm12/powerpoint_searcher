@@ -4,7 +4,7 @@ import asyncio
 from uuid import UUID
 
 from .extraction import Extraction, UpstreamError
-from .models import ErrorDetail, Job, ServiceError
+from .models import ErrorDetail, Job, Manifest, ServiceError
 from .store import Store, Work
 
 
@@ -19,6 +19,19 @@ class Library:
     def _job_identity(work: Work, job: Job) -> None:
         if job.deck_id != work.deck.deck_id or job.source_revision != work.operation.source_revision:
             raise UpstreamError("invalid_extraction_response", "Extraction returned an unexpected deck or revision.")
+        if work.operation.include_notes is not None and job.include_notes != work.operation.include_notes:
+            raise UpstreamError("invalid_extraction_response", "Extraction changed the captured speaker notes policy.")
+
+    @staticmethod
+    def _manifest_notes_policy(work: Work, manifest: Manifest) -> None:
+        include_notes = work.operation.include_notes
+        if include_notes is None:
+            return
+        for slide in manifest.content.slides:
+            notes = slide.notes
+            expected = {"present", "empty"} if include_notes else {"excluded"}
+            if notes is None or notes.state not in expected:
+                raise UpstreamError("invalid_extraction_response", "Extraction manifest does not match the captured speaker notes policy.")
 
     async def reconcile_one(self) -> bool:
         work = self.store.due()
@@ -44,7 +57,8 @@ class Library:
             if operation.phase == "submit":
                 job = await self.extraction.submit(work.deck.deck_id, operation.source_revision,
                                                    operation.remote_key, self.store.source_path(work.deck.deck_id),
-                                                   work.deck.filename or "presentation.pptx")
+                                                   work.deck.filename or "presentation.pptx",
+                                                   operation.include_notes if operation.include_notes is not None else False)
                 self._job_identity(work, job)
                 self.store.accept_job(work, job, self.poll_interval)
             elif operation.phase == "retry":
@@ -68,13 +82,20 @@ class Library:
                             or manifest.source_sha256 != work.deck.checksum
                             or manifest.source_filename != work.deck.filename):
                         raise UpstreamError("invalid_extraction_response", "Extraction manifest does not match the canonical original and job.")
+                    self._manifest_notes_policy(work, manifest)
                     self.store.publish(work, manifest)
                 elif job.state in ("failed", "cancelled"):
                     retryable = job.error.retryable if job.error else True
                     code = job.error.code if job.error and job.error.code in {
-                        "conversion_failed", "conversion_timeout", "worker_stopped", "worker_interrupted"
+                        "conversion_failed", "conversion_timeout", "worker_stopped", "worker_interrupted", "invalid_notes"
                     } else "extraction_failed"
-                    self.store.fail(work, ErrorDetail(code=code, message="Extraction failed. Check renderer readiness and supported presentation content, then retry.", retryable=retryable, stage=job.stage), job)
+                    message = (
+                        "Speaker notes could not be read. Correct the presentation and upload it again."
+                        if code == "invalid_notes"
+                        else "Extraction failed. Check renderer readiness and supported presentation content, then retry."
+                    )
+                    self.store.fail(work, ErrorDetail(code=code, message=message,
+                                                      retryable=retryable, stage=job.stage), job)
                 else:
                     self.store.accept_job(work, job, self.poll_interval)
         except UpstreamError as error:

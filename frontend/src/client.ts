@@ -20,6 +20,7 @@ export type Deck = {
 };
 
 export type Warning = { code: string; message: string; affected_occurrence_ids: string[] };
+export type UploadPolicy = { include_notes: boolean };
 export type Asset = {
   asset_id: string;
   local_id: string;
@@ -117,6 +118,12 @@ function parseAccepted(value: unknown): Accepted {
   const operationId = text(row.operation_id, "operation ID");
   if (!uuidPattern.test(operationId)) throw new Error("Invalid operation ID response.");
   return { deck_id: row.deck_id, operation_id: operationId, status_url: route(row.status_url, "status URL"), operation_url: route(row.operation_url, "operation URL") };
+}
+
+function parseUploadPolicy(value: unknown): UploadPolicy {
+  const row = object(value, "upload policy");
+  if (typeof row.include_notes !== "boolean") throw new Error("Invalid speaker notes policy response.");
+  return { include_notes: row.include_notes };
 }
 
 function parseDeletion(value: unknown): DeletionStatus {
@@ -345,6 +352,10 @@ export class LibraryClient {
     const value: unknown = await (await this.request("/v1/deletions")).json();
     if (!Array.isArray(value)) throw new Error("Invalid deletion list response.");
     return value.map(parseDeletion);
+  }
+
+  async uploadPolicy(): Promise<UploadPolicy> {
+    return parseUploadPolicy(await (await this.request("/v1/policy")).json());
   }
 
   async deck(deckId: string): Promise<Deck> {

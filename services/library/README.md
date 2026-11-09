@@ -30,7 +30,11 @@ $env:LIBRARY_ORIGINS = 'http://localhost:5173'
 uv run python -m library_service
 ```
 
-The service listens on `127.0.0.1:8000`. `LIBRARY_HOST` and `LIBRARY_PORT` change that listener. The library can start when extraction is unavailable. Accepted work remains durable and temporary network failures retry with bounded backoff. After five consecutive processing failures, status becomes `failed` with an actionable retry. A full extraction queue keeps accepted work queued with capped backoff. Deletion continues retrying until both local and extraction cleanup complete.
+The service listens on `127.0.0.1:8000`. `LIBRARY_HOST` and `LIBRARY_PORT` change that listener. `LIBRARY_INCLUDE_NOTES` controls speaker-note extraction and defaults to `true`; set it to `false` to exclude notes. The authenticated `GET /v1/policy` route reports the active value. The frontend shows the policy before upload. The library captures it when it accepts an upload or reprocess operation, and retries keep that captured value.
+
+The library can start when extraction is unavailable. Accepted work remains durable and temporary network failures retry with bounded backoff. After five consecutive processing failures, status becomes `failed` with an actionable retry. A full extraction queue keeps accepted work queued with capped backoff. Deletion continues retrying until both local and extraction cleanup complete.
+
+Stored operations created before notes-policy capture have no recorded policy. The library submits those unfinished operations with notes excluded, which preserves their pre-feature behavior. Retrying one of these operations keeps notes excluded. Use reprocess to apply the current policy.
 
 ## Use PostgreSQL
 
@@ -92,7 +96,7 @@ If an upgrade stops after the marker enters `preparing`, keep the service stoppe
 
 If a new, empty library stops during its first initialization, preserve that directory for diagnosis and configure `LIBRARY_DATA_DIR` to a different empty directory. The interrupted directory has no coordinated backup and cannot start while its marker says `preparing`.
 
-Manifest JSON contains text, geometry, warnings, and asset metadata. It contains no image bytes or private filesystem paths. Asset links refer to authenticated library routes tied to one generation. Original embedded formats are attachments. Only PNG renditions are suitable for inline previews. Contextual crops retain their warning metadata and may contain surrounding objects or slide background.
+Manifest JSON contains visible slide text, speaker notes, geometry, warnings, and asset metadata. Notes are a separate slide channel. All authorized users of the shared library can read them through the manifest. The library does not log note text. Disabling extraction does not remove notes from the preserved original. The manifest contains no image bytes or private filesystem paths. Asset links refer to authenticated library routes tied to one generation. Original embedded formats are attachments. Only PNG renditions are suitable for inline previews. Contextual crops retain their warning metadata and may contain surrounding objects or slide background.
 
 ## Verify independently
 
