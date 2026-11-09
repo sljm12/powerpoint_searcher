@@ -245,7 +245,7 @@ A crop can include background and overlapping elements. Never imply it preserves
 Extract native text, table cells, chart titles and labels where available, and alternative text.
 Include hidden slides with a hidden flag and their original slide numbers.
 Exclude hidden slides from default search results while retaining their downloadable artifacts.
-Defer speaker notes, OCR, font styling reconstruction, editable chart data, animation playback, and video or audio extraction.
+Speaker notes are covered by the [slide notes extraction plan](slide-notes-extraction.md). OCR, font styling reconstruction, editable chart data, animation playback, and video or audio extraction remain deferred.
 Retain the original deck for editable reuse. Export a static appearance for animated objects.
 The default export is PNG. Preserve original embedded formats as separate downloadable files.
 Use transparent isolated object exports when supported. Full-slide PNGs retain their rendered slide background.

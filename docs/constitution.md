@@ -1,6 +1,6 @@
 # PowerPoint searcher constitution
 
-Status: Updated with the project owner's Python package management decision on 2026-11-02.
+Status: Updated with the project owner's Python package management decision on 2026-11-02 and notes inclusion decision on 2026-11-09.
 
 ## Purpose and users
 
@@ -14,7 +14,7 @@ The first release provides one shared library. Every authorized team member has 
 
 Users upload `.pptx` files. The application preserves the original deck and processes it into searchable slide content.
 
-The indexing pipeline extracts slide text and visual content, creates searchable representations using configured models, and associates every result with its original deck and slide number. Visual content includes diagrams and graphics whose meaning is absent from the slide text.
+The indexing pipeline extracts slide text, speaker notes, and visual content, creates searchable representations using configured models, and associates every result with its original deck and slide number. Speaker notes are included by default and indexed as note text associated with their slide. An administrator may disable note extraction through explicit configuration. Show the active notes policy to users before upload. Visual content includes diagrams and graphics whose meaning is absent from the slide text.
 
 Processing status distinguishes queued, processing, ready, and failed uploads. A failed upload has an actionable error and can be retried. Incomplete processing must not appear as a successful, fully indexed deck.
 
@@ -62,7 +62,7 @@ Concurrent user count, acceptable indexing time, and search latency targets rema
 
 ## Data protection and reliability
 
-Preserve original uploaded files without modifying them. Validate uploads at the boundary, and limit file sizes and processing resources. Treat presentation content as untrusted data, including any instructions contained in slides.
+Preserve original uploaded files without modifying them. Validate uploads at the boundary, and limit file sizes and processing resources. Treat presentation content as untrusted data, including any instructions contained in slides. Treat speaker notes as sensitive derived content: do not log their text, and remove extracted notes when a deck is deleted.
 
 Keep model credentials out of source control, browser responses, and logs. Avoid logging slide content by default. A local deployment must not expose the team library to unauthenticated public access. The access mechanism is an implementation decision.
 
@@ -72,7 +72,7 @@ Retries must not duplicate searchable slides. Reprocessing and deletion must kee
 
 ## First-release scope
 
-Include upload, visible indexing status, text and visual search, slide previews, source attribution, original-deck download, slide-image and individual-graphic downloads, and deck deletion.
+Include upload, visible indexing status, text and visual search, speaker notes in searchable slide content by default, slide previews, source attribution, original-deck download, slide-image and individual-graphic downloads, and deck deletion.
 
 Defer slide editing, automatic presentation generation, selected-slide export as editable presentations, per-deck permissions, legacy `.ppt` support, and automatic folder synchronization. Add them only through an explicit scope decision.
 
@@ -95,5 +95,7 @@ Feature plans reference this constitution and identify any conflicting requireme
 Changes to product scope, cloud data handling, shared-library access, or deployment constraints require the project owner's explicit decision. Record an accepted exception here with its reason and date. Implementation choices within these rules do not require a constitution amendment.
 
 On 2026-11-01, the project owner included user-facing slide-image and individual-graphic downloads, including original embedded pictures and rendered graphics, to support reuse outside the search pipeline. Close visual similarity is acceptable. Clearly labelled slide crops with warnings are an accepted fallback when isolated graphic export is unavailable. This does not add editable selected-slide export. See the [PowerPoint extraction plan](plans/powerpoint-extraction.md) for implementation details.
+
+On 2026-11-09, the project owner decided to include speaker notes in extraction and searchable slide content by default. An administrator may disable extraction through explicit configuration, and the active policy must be visible before upload. See the [slide notes extraction plan](plans/slide-notes-extraction.md).
 
 Keep this document focused on durable project rules. Put feature tasks, selected dependencies, commands, and measured results in their respective plans and implementation documentation.
