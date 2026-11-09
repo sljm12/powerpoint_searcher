@@ -4,7 +4,7 @@ This service owns text indexing, exact vector retrieval, lexical retrieval, and 
 
 ## Configure and run
 
-Use a dedicated PostgreSQL 18 database with pgvector 0.8.7 installed by a database administrator. This pairing was verified against PostgreSQL 18.6 and pgvector 0.8.7 in the dedicated database configured through `set_db.bat`. Do not reuse the library metadata database. Copy `.env.example` to a private environment file and set the search token, database URL, and a verified local embedding profile. The service stays unready until it has a database schema and tokenizer/model settings.
+Use a dedicated PostgreSQL 18 database with pgvector 0.8.7 installed by a database administrator. This pairing was verified against PostgreSQL 18.6 and pgvector 0.8.7 in the dedicated database configured through `set_db.bat`. Do not reuse the library metadata database. Copy `.env.example` to `.env` and set the search token, database URL, and a verified local embedding profile. The service stays unready until it has a database schema and tokenizer/model settings. `.env` is ignored by Git.
 
 The project has no selected embedding model or approved language list. Supply a locally stored tokenizer file and the exact immutable model revision after checking its license and endpoint behavior. The model URL must use loopback HTTP in local mode. Cloud mode requires HTTPS and both `SEARCH_EMBEDDING_LOCATION=cloud` and `SEARCH_EMBEDDING_ALLOW_CLOUD=true`.
 
@@ -12,9 +12,11 @@ Install and run the owned schema migration from this directory:
 
 ```powershell
 uv sync --locked
-uv run --locked python -m search_service.migrate
-uv run --locked python -m search_service
+uv run --env-file .env --locked python -m search_service.migrate
+.\scripts\run.ps1
 ```
+
+The launcher reads `services/search/.env` automatically; values already present in the process environment take precedence.
 
 The migration checks that pgvector is already installed and upgrades the search-owned schema transactionally. The runtime database user needs access to the `search` schema and tables. It does not need permission to install extensions. Search binds to loopback by default. Give the library `SEARCH_TOKEN` as its service credential; never expose it to the browser.
 
