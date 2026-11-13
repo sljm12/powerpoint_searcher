@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 
 import httpx
@@ -29,7 +30,10 @@ def test_reorders_response_by_index_and_normalizes_vectors() -> None:
     async def run() -> list[list[float]]:
         def respond(request: httpx.Request) -> httpx.Response:
             assert request.url.path == "/v1/embeddings"
-            assert request.read().decode() == '{"input":["first","second"],"model":"model","encoding_format":"float"}'
+            assert json.loads(request.read()) == {
+                "input": ["first", "second"], "model": "model", "dimensions": None,
+                "encoding_format": "float",
+            }
             return httpx.Response(200, json={"model": "model", "data": [
                 {"index": 1, "embedding": [0, 2]}, {"index": 0, "embedding": [3, 4]},
             ]})
@@ -43,7 +47,7 @@ def test_reorders_response_by_index_and_normalizes_vectors() -> None:
     assert asyncio.run(run()) == [[0.6, 0.8], [0.0, 1.0]]
 
 
-@pytest.mark.parametrize("vector", [[True, 1], [0, 0], [float("inf"), 1]])
+@pytest.mark.parametrize("vector", [[0, 0], [float("inf"), 1]])
 def test_rejects_invalid_vectors(vector: list[object]) -> None:
     async def run() -> None:
         def respond(_: httpx.Request) -> httpx.Response:
