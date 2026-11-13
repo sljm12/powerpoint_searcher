@@ -17,10 +17,31 @@ export type Deck = {
   status_url: string;
   manifest_url: string | null;
   original_url: string;
+  search?: SearchStatus | null;
+};
+
+export type SearchStatus = {
+  state: "not_configured" | "queued" | "processing" | "ready" | "failed" | "deleting";
+  index_revision: number;
+  generation_id: string | null;
+  profile_id: string | null;
+  job_id: string | null;
+  completed_segments: number;
+  total_segments: number;
+  eligible_slides: number;
+  searchable_slides: number;
+  blank_slides: number;
+  hidden_slides: number;
+  warnings: { code: string; message: string }[];
+  error: { code: string; message: string; retryable: boolean } | null;
 };
 
 export type Warning = { code: string; message: string; affected_occurrence_ids: string[] };
-export type UploadPolicy = { include_notes: boolean };
+export type SearchPolicy = { state: "not_configured" | "ready" | "unavailable"; profile_id: string | null; model: string | null; location: string | null; disclosure: string };
+export type UploadPolicy = { include_notes: boolean; search: SearchPolicy };
+export type SearchMatch = { slide_number: number; generation_id: string; index_revision: number; score: number; score_kind: "rrf" | "lexical"; retrieval_paths: ("lexical" | "semantic")[]; matched_channel: "native" | "notes"; snippet: string; preview_url: string; warning_metadata: { code: string; message: string }[] };
+export type SearchGroup = { deck_id: string; filename: string; matches: SearchMatch[]; has_more_matches: boolean };
+export type SearchResponse = { query_id: string; profile_id: string; mode: "hybrid" | "lexical"; degraded: boolean; warnings: { code: string; message: string }[]; coverage: Record<string, number>; decks: SearchGroup[]; next_offset: number | null };
 export type Asset = {
   asset_id: string;
   local_id: string;
@@ -124,7 +145,9 @@ function parseAccepted(value: unknown): Accepted {
 function parseUploadPolicy(value: unknown): UploadPolicy {
   const row = object(value, "upload policy");
   if (typeof row.include_notes !== "boolean") throw new Error("Invalid speaker notes policy response.");
-  return { include_notes: row.include_notes };
+  const search = row.search === undefined ? { state: "not_configured" as const, profile_id: null,
+    model: null, location: null, disclosure: "Text search is not configured." } : parseSearchPolicy(row.search);
+  return { include_notes: row.include_notes, search };
 }
 
 function parseDeletion(value: unknown): DeletionStatus {
@@ -185,6 +208,7 @@ export function parseDeck(value: unknown): Deck {
   if (generation !== null && (typeof generation !== "string" || !uuidPattern.test(generation))) throw new Error("Invalid generation response.");
   const manifestUrl = row.manifest_url;
   if (manifestUrl !== null && typeof manifestUrl !== "string") throw new Error("Invalid manifest URL response.");
+  const search = row.search === undefined || row.search === null ? null : parseSearchStatus(row.search);
   return {
     deck_id: row.deck_id,
     filename: text(row.filename, "filename"),
@@ -202,7 +226,86 @@ export function parseDeck(value: unknown): Deck {
     status_url: route(row.status_url, "status URL"),
     manifest_url: manifestUrl === null ? null : route(manifestUrl, "manifest URL"),
     original_url: route(row.original_url, "original URL"),
+    search,
   };
+}
+
+function parseSearchStatus(value: unknown): SearchStatus {
+  const row = object(value, "search status");
+  const states = ["not_configured", "queued", "processing", "ready", "failed", "deleting"];
+  if (typeof row.state !== "string" || !states.includes(row.state)) throw new Error("Invalid search status response.");
+  if (!Array.isArray(row.warnings)) throw new Error("Invalid search warning response.");
+  const generation = row.generation_id;
+  if (generation !== null && (typeof generation !== "string" || !uuidPattern.test(generation))) throw new Error("Invalid search generation response.");
+  const job = row.job_id;
+  if (job !== null && (typeof job !== "string" || !uuidPattern.test(job))) throw new Error("Invalid search job response.");
+  const profile = row.profile_id;
+  if (profile !== null && typeof profile !== "string") throw new Error("Invalid search profile response.");
+  return { state: row.state as SearchStatus["state"], index_revision: integer(row.index_revision, "search index revision"),
+    generation_id: generation as string | null, profile_id: profile as string | null, job_id: job as string | null,
+    completed_segments: integer(row.completed_segments, "completed search segments"),
+    total_segments: integer(row.total_segments, "total search segments"), warnings: row.warnings.map(parseSearchNotice),
+    eligible_slides: integer(row.eligible_slides ?? 0, "eligible slides"),
+    searchable_slides: integer(row.searchable_slides ?? 0, "searchable slides"),
+    blank_slides: integer(row.blank_slides ?? 0, "blank slides"), hidden_slides: integer(row.hidden_slides ?? 0, "hidden slides"),
+    error: parseError(row.error) };
+}
+
+function parseSearchNotice(value: unknown): { code: string; message: string } {
+  const row = object(value, "search warning");
+  return { code: text(row.code, "search warning code"), message: text(row.message, "search warning message") };
+}
+
+function parseSearchPolicy(value: unknown): SearchPolicy {
+  const row = object(value, "search policy");
+  if (row.state !== "not_configured" && row.state !== "ready" && row.state !== "unavailable") throw new Error("Invalid search policy response.");
+  const nullableText = (item: unknown, name: string) => item === null ? null : text(item, name);
+  return { state: row.state, profile_id: nullableText(row.profile_id, "search profile"),
+    model: nullableText(row.model, "search model"), location: nullableText(row.location, "search location"),
+    disclosure: text(row.disclosure, "search disclosure") };
+}
+
+function parseSearchResponse(value: unknown): SearchResponse {
+  const row = object(value, "search response");
+  if (typeof row.query_id !== "string" || !uuidPattern.test(row.query_id) || typeof row.profile_id !== "string" ||
+      (row.mode !== "hybrid" && row.mode !== "lexical") || typeof row.degraded !== "boolean" ||
+      !Array.isArray(row.warnings) || !Array.isArray(row.decks)) throw new Error("Invalid search response.");
+  const coverage = object(row.coverage, "search coverage");
+  const counts: Record<string, number> = {};
+  for (const [name, count] of Object.entries(coverage)) counts[name] = integer(count, "coverage count");
+  const decks = row.decks.map((value): SearchGroup => {
+    const group = object(value, "search deck group");
+    if (typeof group.deck_id !== "string" || !uuidPattern.test(group.deck_id) || typeof group.has_more_matches !== "boolean" || !Array.isArray(group.matches)) throw new Error("Invalid search deck group.");
+    return { deck_id: group.deck_id, filename: text(group.filename, "search filename"), has_more_matches: group.has_more_matches,
+      matches: group.matches.map((value): SearchMatch => {
+        const match = object(value, "search match");
+        if (typeof match.generation_id !== "string" || !uuidPattern.test(match.generation_id) ||
+            (match.score_kind !== "rrf" && match.score_kind !== "lexical") ||
+            (match.matched_channel !== "native" && match.matched_channel !== "notes") ||
+            !Array.isArray(match.retrieval_paths) || !match.retrieval_paths.every((item) => item === "lexical" || item === "semantic") ||
+            !Array.isArray(match.warning_metadata)) throw new Error("Invalid slide search match.");
+        return { slide_number: integer(match.slide_number, "slide number", 1), generation_id: match.generation_id,
+          index_revision: integer(match.index_revision, "index revision", 1), score: finite(match.score, "ranking score"),
+          score_kind: match.score_kind, retrieval_paths: match.retrieval_paths as SearchMatch["retrieval_paths"],
+          matched_channel: match.matched_channel, snippet: boundedText(match.snippet, "search snippet", 500),
+          preview_url: route(match.preview_url, "search preview URL"), warning_metadata: match.warning_metadata.map(parseSearchNotice) };
+      }) };
+  });
+  const next = row.next_offset;
+  if (next !== null && (typeof next !== "number" || !Number.isInteger(next) || next < 0)) throw new Error("Invalid search continuation.");
+  return { query_id: row.query_id, profile_id: row.profile_id, mode: row.mode, degraded: row.degraded,
+    warnings: row.warnings.map(parseSearchNotice), coverage: counts, decks,
+    next_offset: next as number | null };
+}
+
+function finite(value: unknown, name: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`Invalid ${name} response.`);
+  return value;
+}
+
+function boundedText(value: unknown, name: string, max: number): string {
+  if (typeof value !== "string" || value.length > max) throw new Error(`Invalid ${name} response.`);
+  return value;
 }
 
 function parseRendition(value: unknown): Rendition {
@@ -375,6 +478,12 @@ export class LibraryClient {
     return parseDeck(await (await this.request(`/v1/decks/${deckId}`)).json());
   }
 
+  async search(query: string, options: { deckId?: string; limit?: number; offset?: number; signal?: AbortSignal } = {}): Promise<SearchResponse> {
+    return parseSearchResponse(await (await this.request("/v1/search", { method: "POST", ...(options.signal ? { signal: options.signal } : {}),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, deck_id: options.deckId ?? null, limit: options.limit ?? 20, offset: options.offset ?? 0 }) })).json());
+  }
+
   async upload(file: File): Promise<Accepted> {
     const fingerprint = `${file.name}\0${file.size}\0${file.lastModified}`;
     if (this.pendingUpload?.fingerprint !== fingerprint) {
@@ -408,6 +517,12 @@ export class LibraryClient {
 
   async remove(deckId: string): Promise<Accepted> {
     return parseAccepted(await (await this.request(`/v1/decks/${deckId}`, { method: "DELETE" })).json());
+  }
+
+  async retrySearch(deckId: string): Promise<SearchStatus> {
+    return parseSearchStatus(await (await this.request(`/v1/decks/${deckId}/search/retry`, {
+      method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() },
+    })).json());
   }
 
   async manifest(deck: Deck): Promise<Manifest> {

@@ -27,10 +27,17 @@ $env:EX1_TOKEN = '<the extraction service token>'
 $env:EXTRACTION_URL = 'http://127.0.0.1:8001'
 $env:LIBRARY_DATA_DIR = "$env:LOCALAPPDATA\PowerPointSearcher\library"
 $env:LIBRARY_ORIGINS = 'http://localhost:5173'
+# Optional: configure both values to enable text indexing and grouped search.
+$env:LIBRARY_SEARCH_URL = 'http://127.0.0.1:8002'
+$env:LIBRARY_SEARCH_TOKEN = '<the search service token>'
 uv run python -m library_service
 ```
 
 The service listens on `127.0.0.1:8000`. `LIBRARY_HOST` and `LIBRARY_PORT` change that listener. `LIBRARY_INCLUDE_NOTES` controls speaker-note extraction and defaults to `true`; set it to `false` to exclude notes. The authenticated `GET /v1/policy` route reports the active value. The frontend shows the policy before upload. The library captures it when it accepts an upload or reprocess operation, and retries keep that captured value.
+
+Text search is optional. Configure both `LIBRARY_SEARCH_URL` and `LIBRARY_SEARCH_TOKEN` after independently starting and migrating `services/search/`. The library persists each bounded text snapshot with its extraction publication, submits it with a stable key, and polls status. Search failure does not block uploads or gallery use. A deck is shown as searchable only after the complete build is ready. Deletion sends the search fence and waits for search, extraction, and original cleanup. The library is the only HTTP service the browser calls.
+
+Retryable indexing failures show **Retry search indexing** on the deck. This reuses the search job's durable input snapshot and does not rerun PowerPoint extraction. Configuration and model errors remain failed until corrected or the deck is reprocessed under the active profile.
 
 The library can start when extraction is unavailable. Accepted work remains durable and temporary network failures retry with bounded backoff. After five consecutive processing failures, status becomes `failed` with an actionable retry. A full extraction queue keeps accepted work queued with capped backoff. Deletion continues retrying until both local and extraction cleanup complete.
 

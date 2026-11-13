@@ -260,8 +260,60 @@ class Operation(Record):
     status_url: str
 
 
+class SearchPolicy(Record):
+    state: Literal["not_configured", "ready", "unavailable"]
+    profile_id: str | None = None
+    model: str | None = None
+    location: str | None = None
+    disclosure: str
+
+
 class UploadPolicy(Record):
     include_notes: StrictBool
+    search: SearchPolicy
+
+
+class SearchNotice(Record):
+    code: str
+    message: str
+
+
+class SearchMatch(Record):
+    slide_number: int = Field(ge=1)
+    generation_id: UUID
+    index_revision: int = Field(gt=0)
+    score: float
+    score_kind: Literal["rrf", "lexical"]
+    retrieval_paths: list[Literal["lexical", "semantic"]]
+    matched_channel: Literal["native", "notes"]
+    snippet: str = Field(max_length=500)
+    preview_url: str | None = None
+    warning_metadata: list[SearchNotice]
+
+
+class SearchDeckMatches(Record):
+    deck_id: UUID
+    filename: str = ""
+    matches: list[SearchMatch]
+    has_more_matches: bool
+
+
+class SearchResult(Record):
+    query_id: UUID
+    profile_id: str
+    mode: Literal["hybrid", "lexical"]
+    degraded: StrictBool
+    warnings: list[SearchNotice]
+    coverage: dict[str, int]
+    decks: list[SearchDeckMatches]
+    next_offset: int | None = None
+
+
+class SearchQuery(Record):
+    query: str = Field(min_length=1, max_length=2000)
+    deck_id: UUID | None = None
+    limit: int = Field(default=20, ge=1, le=100, strict=True)
+    offset: int = Field(default=0, ge=0, le=10000, strict=True)
 
 
 class Deck(Record):
@@ -282,6 +334,23 @@ class Deck(Record):
     manifest_url: str | None
     original_url: str | None
     updated_at: str
+    search: SearchStatus | None = None
+
+
+class SearchStatus(Record):
+    state: Literal["not_configured", "queued", "processing", "ready", "failed", "deleting"]
+    index_revision: int = Field(ge=0)
+    generation_id: UUID | None = None
+    profile_id: str | None = None
+    job_id: UUID | None = None
+    completed_segments: int = Field(default=0, ge=0)
+    total_segments: int = Field(default=0, ge=0)
+    eligible_slides: int = Field(default=0, ge=0)
+    searchable_slides: int = Field(default=0, ge=0)
+    blank_slides: int = Field(default=0, ge=0)
+    hidden_slides: int = Field(default=0, ge=0)
+    warnings: list[dict[str, str]] = Field(default_factory=list)
+    error: ErrorDetail | None = None
 
 
 class Accepted(Record):

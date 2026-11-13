@@ -5,7 +5,11 @@ Use a separate search-owned PostgreSQL database for full-text search and pgvecto
 Combine lexical and semantic slide ranks with reciprocal rank fusion before grouping decks. Keep the library's existing database choices and ownership guards.
 Rank decks by their best matching slide and support multilingual queries.
 Keep originals, previews, notes policy, retry safety, and deletion guarantees intact.
-Implement S1, then S2, then S3. This document authorizes no implementation, deployment, or data migration.
+Implementation was explicitly authorized on 2026-11-09 on branch `feature/text-search`. No deployment, merge, PR, or library data migration is authorized.
+
+## Current execution status
+
+S1 now has an independently startable PostgreSQL/pgvector service, durable indexing jobs, exact lexical/vector retrieval, profile registration, idempotent migration, and an initial live smoke receipt against the dedicated search database from `set_db.bat`. The schema-v2 migration passed after profile-registry wiring, but a second live HTTP indexing run on the final code was not completed. S2 now has durable library intents, status polling, a library-only gateway, retry recovery, live-generation filtering, and deletion-fence handoff. S3 now has grouped results, disclosure/degradation states, safe snippets, authenticated previews, and selected-slide gallery entry. Unit/type checks pass for the touched modules. The repeatable browser fixture exists, but browser automation was unavailable in this session. A real embedding model, owner language labels and quality threshold, administrator profile-maintenance/reindex flow, held-out relevance evaluation, 100-deck live workflow, restore verification, performance measurements, and independent review remain open. Do not treat these milestones as release-verified until their plan gates have evidence.
 
 ## How to read this
 

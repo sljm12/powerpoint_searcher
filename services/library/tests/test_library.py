@@ -16,7 +16,7 @@ from pydantic import ValidationError
 
 from library_service.api import Settings, create_app
 from library_service.extraction import Extraction, UpstreamError
-from library_service.models import Job, Manifest, ServiceError
+from library_service.models import ErrorDetail, Job, Manifest, SearchStatus, ServiceError
 from library_service.service import Library
 from library_service.store import Store
 
@@ -401,7 +401,9 @@ def test_notes_policy_is_authenticated_and_captured_for_upload(tmp_path: Path) -
     app = create_app(settings, secure_storage=False, start_worker=False)
     with TestClient(app) as client:
         assert client.get("/v1/policy").status_code == 401
-        assert client.get("/v1/policy", headers=HEADERS).json() == {"include_notes": False}
+        policy = client.get("/v1/policy", headers=HEADERS).json()
+        assert policy["include_notes"] is False
+        assert policy["search"]["state"] == "not_configured"
         accepted = client.post("/v1/decks", headers={**HEADERS, "idempotency-key": "upload"},
                                files={"file": ("team.pptx", b"deck")})
         assert accepted.status_code == 202
@@ -417,6 +419,41 @@ def test_notes_contract_accepts_legacy_and_rejects_bad_states() -> None:
                        {"state": "excluded", "paragraphs": ["hidden note"], "truncated": False})
     with pytest.raises(ValidationError):
         Manifest.model_validate(invalid)
+
+
+def test_search_intent_is_durable_and_deletion_queues_a_fence(tmp_path: Path) -> None:
+    data = tmp_path / "library"
+    store = Store(data, search_configured=True)
+    source = data / "incoming" / "deck.pptx"
+    source.write_bytes(b"deck")
+    accepted = store.upload(source, "team.pptx", "upload-search")
+    work = store.due()
+    assert work is not None
+    published = Manifest.model_validate(manifest(accepted.deck_id, uuid4(), 1,
+        hashlib.sha256(b"deck").hexdigest(), "team.pptx"))
+    payload = {"deck_id": str(accepted.deck_id), "slides": [{"slide_number": 1, "native_text": "Native text"}]}
+    store.publish(work, published, payload, "stable-search-key", True)
+    assert store.deck(accepted.deck_id).search is not None
+    assert store.deck(accepted.deck_id).search.state == "queued"
+    store.close()
+
+    restored = Store(data, search_configured=True)
+    queued = restored.search_work()
+    assert queued is not None and queued[2] == "stable-search-key"
+    assert queued[1] == payload
+    failed = SearchStatus(state="failed", index_revision=1, generation_id=published.generation_id,
+                         profile_id="profile", job_id=uuid4(), error=ErrorDetail(
+                             code="embedding_unavailable", message="Retry safely.", retryable=True))
+    restored.search_submitted(accepted.deck_id, failed)
+    retry = restored.retry_search(accepted.deck_id, "search-retry-key")
+    assert retry.state == "queued" and retry.error is None
+    assert restored.retry_search(accepted.deck_id, "search-retry-key").state == "queued"
+    retry_work = restored.search_work()
+    assert retry_work is not None and retry_work[4] is not None
+    restored.delete(accepted.deck_id)
+    fence = restored.search_work()
+    assert fence is not None and fence[0] == accepted.deck_id and fence[3].state == "deleting"
+    restored.close()
 
 
 def test_malformed_notes_failure_is_actionable_and_redacted(tmp_path: Path) -> None:

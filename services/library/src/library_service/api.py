@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import ipaddress
 import os
 import re
 import subprocess
@@ -25,9 +26,11 @@ from starlette.exceptions import HTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .extraction import Extraction
-from .models import Accepted, Deck, DeletionStatus, Manifest, Operation, ServiceError, UploadPolicy
+from .models import (Accepted, Deck, DeletionStatus, Manifest, Operation, SearchPolicy,
+                     SearchQuery, SearchResult, SearchStatus, ServiceError, UploadPolicy)
 from .metadata import StorageUnavailable
 from .service import Library
+from .search import SearchClient
 from .store import Store
 
 
@@ -49,6 +52,8 @@ class Settings:
     database_backend: Literal["sqlite", "postgresql"] = "sqlite"
     postgres_dsn: str | None = None
     include_notes: bool = True
+    search_url: str | None = None
+    search_token: str | None = None
 
     def __post_init__(self) -> None:
         if any(len(token.encode()) < 32 or not token.isascii() or any(ord(c) < 33 or ord(c) > 126 for c in token)
@@ -70,6 +75,24 @@ class Settings:
             raise ValueError("Set LIBRARY_POSTGRES_DSN when LIBRARY_DB_BACKEND=postgresql")
         if self.database_backend == "sqlite" and self.postgres_dsn:
             raise ValueError("LIBRARY_POSTGRES_DSN requires LIBRARY_DB_BACKEND=postgresql")
+        if bool(self.search_url) != bool(self.search_token):
+            raise ValueError("Configure both LIBRARY_SEARCH_URL and LIBRARY_SEARCH_TOKEN")
+        if self.search_url:
+            parsed_search = urlsplit(self.search_url)
+            if (parsed_search.scheme not in ("http", "https") or not parsed_search.hostname
+                    or parsed_search.username or parsed_search.password or parsed_search.query
+                    or parsed_search.fragment or parsed_search.path not in ("", "/")):
+                raise ValueError("LIBRARY_SEARCH_URL must be a service root without credentials")
+            if parsed_search.scheme == "http":
+                try:
+                    local = ipaddress.ip_address(parsed_search.hostname).is_loopback
+                except ValueError:
+                    local = parsed_search.hostname == "localhost"
+                if not local:
+                    raise ValueError("Non-loopback search services must use HTTPS")
+            if self.search_token and (len(self.search_token.encode()) < 32 or not self.search_token.isascii()
+                    or any(ord(char) < 33 or ord(char) > 126 for char in self.search_token)):
+                raise ValueError("Search service tokens require at least 32 printable ASCII bytes")
 
     @classmethod
     def from_environment(cls) -> Settings:
@@ -86,7 +109,9 @@ class Settings:
                    allowed_origins=tuple(origin.strip() for origin in os.environ.get("LIBRARY_ORIGINS", "").split(",") if origin.strip()),
                    database_backend=cast(Literal["sqlite", "postgresql"], backend),
                    postgres_dsn=os.environ.get("LIBRARY_POSTGRES_DSN"),
-                   include_notes=raw_notes_policy == "true")
+                   include_notes=raw_notes_policy == "true",
+                   search_url=os.environ.get("LIBRARY_SEARCH_URL") or None,
+                   search_token=os.environ.get("LIBRARY_SEARCH_TOKEN") or None)
 
 
 def private_directory(root: Path) -> None:
@@ -198,14 +223,18 @@ def create_app(settings: Settings, transport: httpx.AsyncBaseTransport | None = 
             private_directory(settings.data_dir)
         store: Store | None = None
         extraction: Extraction | None = None
+        search: SearchClient | None = None
         task: asyncio.Task[None] | None = None
         try:
             store = Store(settings.data_dir, settings.database_backend, settings.postgres_dsn,
-                          settings.include_notes)
+                          settings.include_notes, settings.search_url is not None)
             extraction = Extraction(settings.extraction_url, settings.extraction_token,
                                     settings.request_timeout, settings.manifest_limit,
                                     settings.asset_limit, transport)
-            library = Library(store, extraction, settings.poll_interval, settings.retry_limit)
+            if settings.search_url and settings.search_token:
+                search = SearchClient(settings.search_url, settings.search_token,
+                                      settings.request_timeout, transport)
+            library = Library(store, extraction, settings.poll_interval, settings.retry_limit, search)
             app.state.library = library
             task = asyncio.create_task(library.run()) if start_worker else None
             app.state.worker = task
@@ -218,6 +247,8 @@ def create_app(settings: Settings, transport: httpx.AsyncBaseTransport | None = 
                         await task
                 if extraction is not None:
                     await extraction.close()
+                if search is not None:
+                    await search.close()
             finally:
                 if store is not None:
                     store.close()
@@ -261,8 +292,32 @@ def create_app(settings: Settings, transport: httpx.AsyncBaseTransport | None = 
         return library.store.decks()
 
     @app.get("/v1/policy", response_model=UploadPolicy)
-    async def policy() -> UploadPolicy:
-        return UploadPolicy(include_notes=settings.include_notes)
+    async def policy(request: Request) -> UploadPolicy:
+        library: Library = request.app.state.library
+        if library.search is None:
+            search_policy = SearchPolicy(state="not_configured",
+                disclosure="Text search is not configured. No text is sent to an embedding service.")
+        else:
+            try:
+                remote = await library.search.policy()
+                search_policy = SearchPolicy(state="ready", profile_id=remote.profile_id,
+                    model=remote.model, location=remote.location, disclosure=remote.disclosure)
+            except Exception:
+                search_policy = SearchPolicy(state="unavailable",
+                    disclosure="Search is temporarily unavailable. Indexing and search requests will retry when it recovers.")
+        return UploadPolicy(include_notes=settings.include_notes, search=search_policy)
+
+    @app.post("/v1/search", response_model=SearchResult)
+    async def search(request: Request, query: SearchQuery) -> SearchResult:
+        library: Library = request.app.state.library
+        return await library.search_query(query)
+
+    @app.post("/v1/decks/{deck_id}/search/retry", response_model=SearchStatus)
+    async def retry_search(deck_id: UUID, request: Request) -> SearchStatus:
+        if await request.body():
+            raise ServiceError(400, "malformed_request", "This operation requires an empty body.")
+        library: Library = request.app.state.library
+        return library.retry_search(deck_id, request_key(request))
 
     @app.get("/v1/deletions", response_model=list[DeletionStatus])
     async def deletions(request: Request) -> list[DeletionStatus]:
