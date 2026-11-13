@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from pathlib import Path
 
 import httpx
@@ -30,9 +29,7 @@ def test_reorders_response_by_index_and_normalizes_vectors() -> None:
     async def run() -> list[list[float]]:
         def respond(request: httpx.Request) -> httpx.Response:
             assert request.url.path == "/v1/embeddings"
-            assert json.loads(request.content) == {
-                "model": "model", "input": ["first", "second"], "encoding_format": "float",
-            }
+            assert request.read().decode() == '{"input":["first","second"],"model":"model","encoding_format":"float"}'
             return httpx.Response(200, json={"model": "model", "data": [
                 {"index": 1, "embedding": [0, 2]}, {"index": 0, "embedding": [3, 4]},
             ]})
