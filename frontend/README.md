@@ -1,17 +1,17 @@
 # PowerPoint library frontend
 
-The TypeScript frontend uploads PowerPoint decks to the library service. It shows extraction and search status, ranked slide previews, graphic renditions, warnings, and authenticated downloads. It does not call the extraction or search service directly.
+The TypeScript frontend uploads PowerPoint decks through the web gateway. It shows extraction and search status, ranked slide previews, graphic renditions, warnings, and authenticated downloads. It does not call backend services directly or handle their credentials.
 
 ## Configure and run
 
-Install Node.js 22.6 or later. Copy `.env.example` to `.env.local` and set `VITE_LIBRARY_URL` to the library service URL. The library must allow the frontend origin in `LIBRARY_ORIGINS` when the browser uses a different origin.
+Install Node.js 22.6 or later. Copy `.env.example` to `.env.local`; `VITE_GATEWAY_URL` points Vite's development proxy at the gateway. Configure and start the gateway as described in [its README](../services/web-gateway/README.md).
 
 ```powershell
 npm ci
 npm run dev
 ```
 
-Open the local URL printed by Vite. Enter the library access token on the page. The frontend keeps the token in memory and sends it as a bearer token. It does not write the token to browser storage.
+Open the local URL printed by Vite. Sign in with the shared team passphrase. The gateway keeps its library credential server-side and gives the browser an HttpOnly session cookie. The frontend keeps the session CSRF token in memory.
 
 After connection, the upload form shows whether speaker notes will be included. The frontend refreshes this policy before upload. The original deck keeps its notes in either policy.
 
@@ -21,7 +21,7 @@ Build static files with:
 npm run build
 ```
 
-The build writes `dist/`. In a deployed setup, serve those files and route `/v1` requests to the library service. Set `VITE_LIBRARY_URL` at build time only when the API uses a separate origin.
+The build writes `dist/`. The gateway serves these files and proxies `/v1` to the library. Build and deploy the frontend with the gateway.
 
 ## Browse slides
 
@@ -45,4 +45,4 @@ npm run build
 
 The TypeScript compiler checks strict types before Vite builds the page. `npm test` checks runtime parsing of deck and manifest responses. The live upload, download, warning, retry, and deletion workflows require the library and extraction services. Their commands and limits are documented in their own READMEs.
 
-With Vite running, open `/tests/gallery.html` for browser assertions against the actual gallery module and synthetic local previews. The page reports `PASS` after checking automatic previews, adjustable columns, the selected slide modal, download routes, warnings, failure retry, focus restoration, and late image cleanup. It then leaves a sample gallery open for visual and keyboard checks. This fixture requires no library token and is not included in the production build.
+With Vite and the gateway running, open `/tests/gallery.html` for browser assertions against the actual gallery module and synthetic local previews. The page reports `PASS` after checking automatic previews, adjustable columns, the selected slide modal, download routes, warnings, failure retry, focus restoration, and late image cleanup. It then leaves a sample gallery open for visual and keyboard checks. The fixture is not included in the production build.

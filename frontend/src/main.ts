@@ -8,8 +8,10 @@ function requiredElement<T extends HTMLElement>(selector: string): T {
   return element;
 }
 
-const tokenInput = requiredElement<HTMLInputElement>("#token");
+const tokenInput = requiredElement<HTMLInputElement>("#passphrase");
 const connectForm = requiredElement<HTMLFormElement>("#connect-form");
+const retryConnection = requiredElement<HTMLButtonElement>("#retry-connection");
+const signOutButton = requiredElement<HTMLButtonElement>("#sign-out");
 const uploadForm = requiredElement<HTMLFormElement>("#upload-form");
 const fileInput = requiredElement<HTMLInputElement>("#deck-file");
 const fileName = requiredElement<HTMLElement>("#file-name");
@@ -239,24 +241,57 @@ async function followDeletion(accepted: { operation_id: string }): Promise<void>
   }
 }
 
-connectForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
+async function loadSession(): Promise<void> {
   try {
-    const connectedClient = new LibraryClient(tokenInput.value);
+    const response = await fetch("/auth/session", { credentials: "same-origin", cache: "no-store" });
+    if (response.status === 401) {
+      client = null; library.hidden = true; connectForm.hidden = false; retryConnection.hidden = true;
+      showStatus("Sign in to open the shared library.");
+      return;
+    }
+    if (!response.ok) throw new Error(`Gateway connection failed (${response.status}). Retry when it is available.`);
+    const state: unknown = await response.json();
+    if (typeof state !== "object" || state === null || !("csrf_token" in state) || typeof state.csrf_token !== "string") throw new Error("Invalid gateway session response.");
+    const connectedClient = new LibraryClient(state.csrf_token);
     const policy = await connectedClient.uploadPolicy();
     client = connectedClient;
     showNotesPolicy(policy.include_notes);
     showSearchPolicy(policy.search);
     await renderDecks(true);
     library.hidden = false;
+    connectForm.hidden = true;
+    retryConnection.hidden = true;
     showStatus("Connected to the shared library.");
+  } catch (error) { client = null; library.hidden = true; retryConnection.hidden = false; reportError(error); }
+}
+
+connectForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = connectForm.querySelector<HTMLButtonElement>("button");
+  if (button) button.disabled = true;
+  try {
+    const response = await fetch("/auth/login", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passphrase: tokenInput.value }) });
     tokenInput.value = "";
-    tokenInput.disabled = true;
-    connectForm.querySelector<HTMLButtonElement>("button")?.setAttribute("disabled", "true");
-  } catch (error) {
-    client = null;
-    reportError(error);
-  }
+    if (!response.ok) throw new Error(response.status === 429 ? "Too many attempts. Try again later." : "Sign-in failed. Check the passphrase and try again.");
+    await loadSession();
+  } catch (error) { reportError(error); }
+  finally { if (button) button.disabled = false; }
+});
+
+retryConnection.addEventListener("click", () => void loadSession());
+signOutButton.addEventListener("click", async () => {
+  try { if (client) await client.request("/auth/logout", { method: "POST" }); }
+  catch (error) { reportError(error); return; }
+  window.clearTimeout(refreshTimer); gallery?.close(); gallery = null;
+  for (const url of searchImageUrls) URL.revokeObjectURL(url);
+  searchImageUrls.clear(); searchResults.replaceChildren(); deckList.replaceChildren();
+  library.hidden = true; client = null; connectForm.hidden = false; showStatus("Signed out.");
+});
+window.addEventListener("library-session-expired", () => {
+  window.clearTimeout(refreshTimer); searchController?.abort(); gallery?.close(); gallery = null;
+  for (const url of searchImageUrls) URL.revokeObjectURL(url);
+  searchImageUrls.clear(); searchResults.replaceChildren(); deckList.replaceChildren();
+  library.hidden = true; client = null; connectForm.hidden = false; showStatus("Your session expired. Sign in again.", "error");
 });
 
 uploadForm.addEventListener("submit", async (event) => {
@@ -396,3 +431,5 @@ searchForm.addEventListener("submit", (event) => {
 fileInput.addEventListener("change", () => {
   fileName.textContent = fileInput.files?.item(0)?.name ?? "No file selected";
 });
+
+void loadSession();

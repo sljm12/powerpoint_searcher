@@ -431,22 +431,27 @@ export function validateManifestForDeck(deck: Deck, manifest: Manifest): Manifes
 }
 
 export class LibraryClient {
-  private readonly baseUrl: string;
-  private readonly token: string;
+  private csrfToken: string;
   private pendingUpload: { fingerprint: string; key: string } | null = null;
 
-  constructor(token: string) {
-    const configuredUrl = import.meta.env?.VITE_LIBRARY_URL;
-    this.baseUrl = typeof configuredUrl === "string" ? configuredUrl.replace(/\/$/, "") : "";
-    if (token.length < 32) throw new Error("The library token must contain at least 32 characters.");
-    this.token = token;
+  constructor(csrfToken: string) {
+    this.csrfToken = csrfToken;
+  }
+
+  setCsrfToken(token: string): void {
+    this.csrfToken = token;
   }
 
   async request(path: string, init: RequestInit = {}): Promise<Response> {
-    const response = await fetch(`${this.baseUrl}${path}`, {
+    const method = (init.method ?? "GET").toUpperCase();
+    const headers = new Headers(init.headers);
+    if (method !== "GET" && method !== "HEAD") headers.set("X-CSRF-Token", this.csrfToken);
+    const response = await fetch(path, {
       ...init,
-      headers: { Authorization: `Bearer ${this.token}`, ...init.headers },
+      credentials: "same-origin",
+      headers,
     });
+    if (response.status === 401 && path.startsWith("/v1/")) window.dispatchEvent(new Event("library-session-expired"));
     if (!response.ok) {
       const data: unknown = await response.json().catch(() => null);
       if (typeof data === "object" && data !== null && "error" in data) {

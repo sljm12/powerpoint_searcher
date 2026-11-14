@@ -1,5 +1,5 @@
 interface ImportMetaEnv {
-  readonly VITE_LIBRARY_URL: string;
+  readonly VITE_GATEWAY_URL: string;
 }
 
 interface ImportMeta {
