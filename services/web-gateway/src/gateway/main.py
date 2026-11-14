@@ -41,7 +41,7 @@ def create_app() -> FastAPI:
     app_origin = os.environ.get("GATEWAY_ORIGIN", "http://127.0.0.1:8080" if local else "")
     allowed_origins = {app_origin}
     if local:
-        allowed_origins.add("http://127.0.0.1:5173")
+        allowed_origins.update({"http://127.0.0.1:5173", "http://localhost:5173"})
     allowed_origins.update(
         item.strip() for item in os.environ.get("GATEWAY_ALLOWED_ORIGINS", "").split(",") if item.strip()
     )

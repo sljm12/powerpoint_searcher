@@ -24,6 +24,10 @@ def test_passphrase_session_and_csrf_logout(monkeypatch, tmp_path):
             "/auth/login", json={"passphrase": phrase}, headers={"Origin": "http://127.0.0.1:5174"}
         )
         assert denied_origin.status_code == 403
+        localhost_login = client.post(
+            "/auth/login", json={"passphrase": phrase}, headers={"Origin": "http://localhost:5173"}
+        )
+        assert localhost_login.status_code == 200
         login = client.post(
             "/auth/login", json={"passphrase": phrase}, headers={"Origin": "http://127.0.0.1:5173"}
         )

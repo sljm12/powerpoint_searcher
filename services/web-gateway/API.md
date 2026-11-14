@@ -1,12 +1,12 @@
 # Web gateway API
 
-The gateway serves the built frontend, creates shared-passphrase browser sessions, and proxies `/v1/...` to the configured library URL. It never reads library storage. The browser never receives the library bearer credential. Browser requests must use a configured allowed host and an origin equal to `GATEWAY_ORIGIN` or one listed in `GATEWAY_ALLOWED_ORIGINS`. In local mode, `http://127.0.0.1:5173` is also allowed for the Vite development server.
+The gateway serves the built frontend, creates shared-passphrase browser sessions, and proxies `/v1/...` to the configured library URL. It never reads library storage. The browser never receives the library bearer credential. Browser requests must use a configured allowed host and an origin equal to `GATEWAY_ORIGIN` or one listed in `GATEWAY_ALLOWED_ORIGINS`. In local mode, `http://127.0.0.1:5173` and `http://localhost:5173` are also allowed for the Vite development server.
 
 ## Configuration
 
 Set `LIBRARY_URL`, `LIBRARY_TOKEN` (at least 32 characters), `TEAM_PASSPHRASE_SALT`, and `TEAM_PASSPHRASE_HASH`. Generate the salted scrypt values with `uv run python scripts/make_passphrase_hash.py`; the passphrase itself is not stored. Set `FRONTEND_DIST` if the build is not at `../../frontend/dist` from the gateway working directory.
 
-For local-only use, set `GATEWAY_LOCAL_MODE=true`, `GATEWAY_ALLOWED_HOSTS=127.0.0.1:8080`, and `GATEWAY_ORIGIN=http://127.0.0.1:8080`. The Vite development origin `http://127.0.0.1:5173` is allowed automatically. Keep the listener on loopback. For team deployment, set the exact public host in `GATEWAY_ALLOWED_HOSTS`, the HTTPS origin in `GATEWAY_ORIGIN`, and `GATEWAY_HTTPS_TERMINATED=true`; terminate HTTPS at a trusted reverse proxy and do not expose the gateway or library directly. This service trusts no forwarded identity headers. Restart invalidates all sessions. Use one worker because sessions and rate limits are in memory.
+For local-only use, set `GATEWAY_LOCAL_MODE=true`, `GATEWAY_ALLOWED_HOSTS=127.0.0.1:8080`, and `GATEWAY_ORIGIN=http://127.0.0.1:8080`. The Vite development origins `http://127.0.0.1:5173` and `http://localhost:5173` are allowed automatically. Keep the listener on loopback. For team deployment, set the exact public host in `GATEWAY_ALLOWED_HOSTS`, the HTTPS origin in `GATEWAY_ORIGIN`, and `GATEWAY_HTTPS_TERMINATED=true`; terminate HTTPS at a trusted reverse proxy and do not expose the gateway or library directly. This service trusts no forwarded identity headers. Restart invalidates all sessions. Use one worker because sessions and rate limits are in memory.
 
 ## Routes
 
