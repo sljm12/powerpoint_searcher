@@ -36,6 +36,7 @@ class StoredDeck(Record):
     manifest: Manifest | None = None
     updated_at: str
     search: SearchStatus | None = None
+    search_index_revision: int = 0
     search_payload: dict[str, object] | None = None
     search_key: str | None = None
     search_retry_key: str | None = None
@@ -48,7 +49,17 @@ class StoredDeck(Record):
     def deletion_state(self) -> StoredDeck:
         if (self.deleted_at is None) == (self.state in ("deleting", "deleted")):
             raise ValueError("Deletion timestamp and state do not match")
+        if self.search is not None:
+            self.search_index_revision = max(self.search_index_revision, self.search.index_revision)
+            if self.search.source_revision == 0 and self.search.state != "not_configured":
+                self.search = self.search.model_copy(update={"source_revision": self.source_revision})
         return self
+
+    def next_search_index_revision(self, source_revision: int) -> int:
+        revision = max(self.search_index_revision + 1, source_revision)
+        if revision > 9_999_999_999:
+            raise ServiceError(409, "search_revision_limit", "Deck has reached the search revision limit.")
+        return revision
 
 
 class StoredOperation(Operation):
@@ -316,7 +327,7 @@ class Store:
                                   current_operation=operation.operation_id, deleted_at=timestamp,
                                   updated_at=timestamp,
                                   search=SearchStatus(state="deleting", index_revision=0) if self.search_configured else None,
-                                  search_delete_pending=self.search_configured)
+                                  search_delete_pending=self.search_configured, search_due=time.time())
                 self._save_deck(deck)
                 self._save_operation(operation)
                 return self.accepted(operation)
@@ -331,9 +342,11 @@ class Store:
             operation = self._new_operation(identifier, deck.source_revision, deck.fence, "delete", "delete")
             deck.deleted_at, deck.state, deck.updated_at = now(), "deleting", now()
             deck.search_delete_pending = self.search_configured or (deck.search is not None and deck.search.state not in ("not_configured", "deleting"))
+            deck.search_due = time.time()
             if deck.search is not None:
                 deck.search = deck.search.model_copy(update={"state": "deleting", "error": None})
             deck.search_payload = None
+            deck.search_key = None
             deck.search_retry_key = None
             deck.search_retry_request_key = None
             deck.manifest, deck.current_operation = None, operation.operation_id
@@ -395,13 +408,17 @@ class Store:
             deck, operation = current
             deck.manifest, deck.state, deck.updated_at = manifest, "extracted", now()
             if search_configured and search_payload is not None and search_key is not None:
-                deck.search = SearchStatus(state="queued", index_revision=work.operation.source_revision,
+                deck.search_index_revision = deck.next_search_index_revision(work.operation.source_revision)
+                search_payload["index_revision"] = deck.search_index_revision
+                deck.search = SearchStatus(state="queued", index_revision=deck.search_index_revision,
+                                           source_revision=work.operation.source_revision,
                                            generation_id=manifest.generation_id)
-                deck.search_payload, deck.search_key = search_payload, search_key
+                deck.search_payload, deck.search_key = search_payload, f"{search_key}-{deck.search_index_revision}"
                 deck.search_retry_key, deck.search_retry_request_key = None, None
                 deck.search_due, deck.search_attempts = time.time(), 0
             else:
-                deck.search = SearchStatus(state="not_configured", index_revision=0)
+                deck.search = SearchStatus(state="not_configured", index_revision=0,
+                                           source_revision=work.operation.source_revision)
                 deck.search_payload, deck.search_key = None, None
             operation.state, operation.phase, operation.updated_at = "succeeded", "complete", now()
             operation.completed_slides = operation.total_slides = len(manifest.content.slides)
@@ -414,9 +431,12 @@ class Store:
             assert self.metadata is not None
             for raw in self.metadata.deck_records(newest_first=True):
                 deck = StoredDeck.model_validate_json(raw)
-                if deck.search_delete_pending:
+                if deck.search_delete_pending and deck.search_due <= time.time():
                     return (deck.deck_id, None, None,
-                            SearchStatus(state="deleting", index_revision=deck.search.index_revision if deck.search else 0),
+                            deck.search or SearchStatus(
+                                state="deleting", index_revision=deck.search.index_revision if deck.search else 0,
+                                source_revision=deck.search.source_revision if deck.search else deck.source_revision,
+                            ),
                             None, deck.search_attempts)
                 if (deck.search is not None and deck.search.state in ("queued", "processing")
                         and deck.search_due <= time.time()):
@@ -424,9 +444,14 @@ class Store:
                             deck.search_retry_key, deck.search_attempts)
         return None
 
-    def search_submitted(self, deck_id: UUID, status: SearchStatus, *, retry_after: float = 0) -> None:
+    def search_submitted(self, deck_id: UUID, status: SearchStatus, *, expected_status: SearchStatus,
+                         expected_key: str | None, expected_retry_key: str | None,
+                         retry_after: float = 0) -> bool:
         with self.transaction():
             deck = self._deck(deck_id, allow_deleted=True)
+            if (deck.search != expected_status or deck.search_key != expected_key
+                    or deck.search_retry_key != expected_retry_key):
+                return False
             deck.search = status
             deck.search_attempts += 1
             if status.job_id is not None or (status.state == "failed" and status.error is not None
@@ -436,6 +461,7 @@ class Store:
                 deck.search_retry_key = None
             deck.search_due = time.time() + retry_after
             self._save_deck(deck)
+            return True
 
     def retry_search(self, deck_id: UUID, request_key: str) -> SearchStatus:
         with self.transaction():
@@ -454,12 +480,20 @@ class Store:
             self._save_deck(deck)
             return deck.search
 
-    def search_deleted(self, deck_id: UUID) -> None:
+    def search_deleted(self, deck_id: UUID, *, expected_status: SearchStatus,
+                       expected_key: str | None, expected_retry_key: str | None) -> bool:
         with self.transaction():
             deck = self._deck(deck_id, allow_deleted=True)
+            if (not deck.search_delete_pending or deck.search != expected_status
+                    or deck.search_key != expected_key or deck.search_retry_key != expected_retry_key):
+                return False
             deck.search_delete_pending = False
-            deck.search = SearchStatus(state="deleting", index_revision=deck.search.index_revision if deck.search else 0)
+            deck.search = SearchStatus(
+                state="deleting", index_revision=deck.search.index_revision if deck.search else 0,
+                source_revision=deck.source_revision,
+            )
             self._save_deck(deck)
+            return True
 
     def fail(self, work: Work, error: ErrorDetail, job: Job | None = None) -> None:
         with self.transaction():

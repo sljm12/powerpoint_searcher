@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import threading
+import time
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
@@ -61,14 +62,25 @@ class SearchStore:
                                "ON CONFLICT (profile_id) DO NOTHING", (profile_id, Jsonb(configuration)))
 
     @contextmanager
-    def connection(self) -> Iterator[psycopg.Connection[dict[str, Any]]]:
-        with self.lock:
+    def connection(self, *, deadline: float | None = None) -> Iterator[psycopg.Connection[dict[str, Any]]]:
+        if deadline is None:
+            self.lock.acquire()
+        else:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not self.lock.acquire(timeout=remaining):
+                raise SearchError(504, "search_timeout", "Search exceeded its configured response deadline. Try again.", True)
+        try:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise SearchError(504, "search_timeout", "Search exceeded its configured response deadline. Try again.", True)
             if self.db is None:
                 raise SearchError(503, "storage_unavailable", "Search database is not configured.")
             connection = self.db
-            connection.execute("SELECT set_config('statement_timeout', %s, false)",
-                               (f"{self.settings.database_statement_timeout_ms}ms",))
+            if deadline is None:
+                connection.execute("SELECT set_config('statement_timeout', %s, false)",
+                                   (f"{self.settings.database_statement_timeout_ms}ms",))
             yield connection
+        finally:
+            self.lock.release()
 
     def migrate(self) -> None:
         assert self.db is not None
@@ -382,69 +394,88 @@ class SearchStore:
                                (library_id, deck_id))
 
     def search(self, request: SearchRequest, vector: list[float] | None,
-               degraded_warning: WarningDetail | None) -> SearchResponse:
-        with self.connection() as connection, connection.transaction():
-            connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-            state = connection.execute("SELECT library_id,active_profile,maintenance FROM search.service_state WHERE id=1").fetchone()
-            if not state or not state["active_profile"]:
-                raise SearchError(503, "search_unconfigured", "Search is not configured.")
-            if state["library_id"] != request.library_id:
-                raise SearchError(409, "library_conflict", "This search database is bound to another library.")
-            if state["maintenance"]:
-                raise SearchError(503, "reindex_required", "Search is paused for profile maintenance.")
-            if request.profile_id != state["active_profile"]:
-                raise SearchError(409, "profile_conflict", "The requested profile is not active.")
-            params: list[Any] = [request.library_id, request.profile_id]
-            deck_clause = ""
-            if request.deck_id:
-                deck_clause = " AND d.deck_id=%s"
-                params.append(request.deck_id)
-            lexical: list[dict[str, Any]] = []
-            query_row = connection.execute(
-                "SELECT websearch_to_tsquery('simple',%s) AS query, "
-                "querytree(websearch_to_tsquery('simple',%s)) AS positive",
-                (request.query, request.query),
-            ).fetchone()
-            if query_row and query_row["positive"] not in (None, "", "T"):
-                lexical = connection.execute(
-                    "WITH q AS (SELECT websearch_to_tsquery('simple',%s) AS query) "
-                    "SELECT s.deck_id,s.slide_number,s.channel,s.ordinal,s.text,s.warnings,"
-                    "ts_rank_cd(s.search_vector,q.query) AS score,d.active_generation AS generation_id,"
-                    "d.active_revision AS index_revision FROM search.segments s "
-                    "JOIN search.decks d ON d.library_id=s.library_id AND d.deck_id=s.deck_id "
-                    "CROSS JOIN q WHERE s.library_id=%s AND d.profile_id=%s AND d.deleted=FALSE "
-                    "AND d.active_revision=d.requested_revision AND s.index_revision=d.active_revision "
-                    "AND s.profile_id=d.profile_id AND s.search_vector @@ q.query" + deck_clause +
-                    " ORDER BY score DESC,s.deck_id,s.slide_number,s.ordinal LIMIT %s",
-                    [request.query, *params[:2], *params[2:], request.candidate_limit],
-                ).fetchall()
-                lexical = [dict(row) for row in lexical]
-            semantic: list[dict[str, Any]] = []
-            if vector is not None:
-                vector_text = "[" + ",".join(format(value, ".9g") for value in vector) + "]"
-                semantic = [dict(row) for row in connection.execute(
-                    "SELECT s.deck_id,s.slide_number,s.channel,s.ordinal,s.text,s.warnings,"
-                    "(s.embedding <=> %s::vector) AS score,d.active_generation AS generation_id,"
-                    "d.active_revision AS index_revision FROM search.segments s "
-                    "JOIN search.decks d ON d.library_id=s.library_id AND d.deck_id=s.deck_id "
-                    "WHERE s.library_id=%s AND d.profile_id=%s AND d.deleted=FALSE "
-                    "AND d.active_revision=d.requested_revision AND s.index_revision=d.active_revision "
-                    "AND s.profile_id=d.profile_id" + deck_clause + " ORDER BY s.embedding <=> %s::vector, "
-                    "s.deck_id,s.slide_number,s.ordinal LIMIT %s",
-                    [vector_text, *params, vector_text, request.candidate_limit],
-                ).fetchall()]
-            eligible = connection.execute(
-                "SELECT coalesce(sum(d.eligible_slides),0) AS eligible_slides, "
-                "coalesce(sum(d.searchable_slides),0) AS searchable_slides, "
-                "coalesce(sum(d.blank_slides),0) AS blank_slides, "
-                "coalesce(sum(d.hidden_slides),0) AS hidden_slides FROM search.decks d "
-                "WHERE d.library_id=%s AND d.profile_id=%s AND d.deleted=FALSE "
-                "AND d.active_revision=d.requested_revision" + deck_clause,
-                params,
-            ).fetchone()
-            coverage = {name: int(eligible[name]) for name in (
-                "eligible_slides", "searchable_slides", "blank_slides", "hidden_slides"
-            )} if eligible else {"eligible_slides": 0, "searchable_slides": 0, "blank_slides": 0, "hidden_slides": 0}
+               degraded_warning: WarningDetail | None, *, deadline: float) -> SearchResponse:
+        try:
+            with self.connection(deadline=deadline) as connection, connection.transaction():
+                connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+
+                def execute(query: str, params: Any = None) -> Any:
+                    remaining_ms = int((deadline - time.monotonic()) * 1000)
+                    statement_timeout_ms = min(self.settings.database_statement_timeout_ms, remaining_ms)
+                    if statement_timeout_ms <= 0:
+                        raise SearchError(504, "search_timeout", "Search exceeded its configured response deadline. Try again.", True)
+                    connection.execute("SELECT set_config('statement_timeout', %s, true)",
+                                       (f"{statement_timeout_ms}ms",))
+                    if time.monotonic() >= deadline:
+                        raise SearchError(504, "search_timeout", "Search exceeded its configured response deadline. Try again.", True)
+                    return connection.execute(query, params)
+
+                state = execute("SELECT library_id,active_profile,maintenance FROM search.service_state WHERE id=1").fetchone()
+                if not state or not state["active_profile"]:
+                    raise SearchError(503, "search_unconfigured", "Search is not configured.")
+                if state["library_id"] != request.library_id:
+                    raise SearchError(409, "library_conflict", "This search database is bound to another library.")
+                if state["maintenance"]:
+                    raise SearchError(503, "reindex_required", "Search is paused for profile maintenance.")
+                if request.profile_id != state["active_profile"]:
+                    raise SearchError(409, "profile_conflict", "The requested profile is not active.")
+                params: list[Any] = [request.library_id, request.profile_id]
+                deck_clause = ""
+                if request.deck_id:
+                    deck_clause = " AND d.deck_id=%s"
+                    params.append(request.deck_id)
+                lexical: list[dict[str, Any]] = []
+                query_row = execute(
+                    "SELECT websearch_to_tsquery('simple',%s) AS query, "
+                    "querytree(websearch_to_tsquery('simple',%s)) AS positive",
+                    (request.query, request.query),
+                ).fetchone()
+                if query_row and query_row["positive"] not in (None, "", "T"):
+                    lexical = execute(
+                        "WITH q AS (SELECT websearch_to_tsquery('simple',%s) AS query) "
+                        "SELECT s.deck_id,s.slide_number,s.channel,s.ordinal,s.text,s.warnings,"
+                        "ts_rank_cd(s.search_vector,q.query) AS score,d.active_generation AS generation_id,"
+                        "d.active_revision AS index_revision FROM search.segments s "
+                        "JOIN search.decks d ON d.library_id=s.library_id AND d.deck_id=s.deck_id "
+                        "CROSS JOIN q WHERE s.library_id=%s AND d.profile_id=%s AND d.deleted=FALSE "
+                        "AND d.active_revision=d.requested_revision AND s.index_revision=d.active_revision "
+                        "AND s.profile_id=d.profile_id AND s.search_vector @@ q.query" + deck_clause +
+                        " ORDER BY score DESC,s.deck_id,s.slide_number,s.ordinal LIMIT %s",
+                        [request.query, *params[:2], *params[2:], request.candidate_limit],
+                    ).fetchall()
+                    lexical = [dict(row) for row in lexical]
+                semantic: list[dict[str, Any]] = []
+                if vector is not None:
+                    vector_text = "[" + ",".join(format(value, ".9g") for value in vector) + "]"
+                    semantic = [dict(row) for row in execute(
+                        "SELECT s.deck_id,s.slide_number,s.channel,s.ordinal,s.text,s.warnings,"
+                        "(s.embedding <=> %s::vector) AS score,d.active_generation AS generation_id,"
+                        "d.active_revision AS index_revision FROM search.segments s "
+                        "JOIN search.decks d ON d.library_id=s.library_id AND d.deck_id=s.deck_id "
+                        "WHERE s.library_id=%s AND d.profile_id=%s AND d.deleted=FALSE "
+                        "AND d.active_revision=d.requested_revision AND s.index_revision=d.active_revision "
+                        "AND s.profile_id=d.profile_id" + deck_clause + " ORDER BY s.embedding <=> %s::vector, "
+                        "s.deck_id,s.slide_number,s.ordinal LIMIT %s",
+                        [vector_text, *params, vector_text, request.candidate_limit],
+                    ).fetchall()]
+                eligible = execute(
+                    "SELECT coalesce(sum(d.eligible_slides),0) AS eligible_slides, "
+                    "coalesce(sum(d.searchable_slides),0) AS searchable_slides, "
+                    "coalesce(sum(d.blank_slides),0) AS blank_slides, "
+                    "coalesce(sum(d.hidden_slides),0) AS hidden_slides FROM search.decks d "
+                    "WHERE d.library_id=%s AND d.profile_id=%s AND d.deleted=FALSE "
+                    "AND d.active_revision=d.requested_revision" + deck_clause,
+                    params,
+                ).fetchone()
+                coverage = {name: int(eligible[name]) for name in (
+                    "eligible_slides", "searchable_slides", "blank_slides", "hidden_slides"
+                )} if eligible else {"eligible_slides": 0, "searchable_slides": 0, "blank_slides": 0, "hidden_slides": 0}
+        except psycopg.errors.QueryCanceled:
+            if time.monotonic() >= deadline:
+                raise SearchError(504, "search_timeout", "Search exceeded its configured response deadline. Try again.", True) from None
+            raise SearchError(503, "storage_unavailable", "Search database could not complete the query.", True) from None
+        except psycopg.Error:
+            raise SearchError(503, "storage_unavailable", "Search database is not available.", True) from None
         from .domain import collapse_path, reciprocal_rank_fusion
 
         lexical = collapse_path(lexical, "score", True)
@@ -470,6 +501,8 @@ class SearchStore:
                 deck_id=UUID(str(row["deck_id"])), matches=[self._match(row, mode)],
                 has_more_matches=sum(item["deck_id"] == row["deck_id"] for item in fused) > 1,
             ) for row in page]
+        if time.monotonic() >= deadline:
+            raise SearchError(504, "search_timeout", "Search exceeded its configured response deadline. Try again.", True)
         return SearchResponse(
             query_id=uuid.uuid4(), profile_id=request.profile_id, mode=mode,
             degraded=degraded_warning is not None, warnings=warnings,

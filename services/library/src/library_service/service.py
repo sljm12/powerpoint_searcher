@@ -134,7 +134,7 @@ class Library:
         assert metadata is not None
         return {"library_id": str(metadata.library_id), "deck_id": str(manifest.deck_id),
                 "generation_id": str(manifest.generation_id), "source_revision": manifest.source_revision,
-                "index_revision": work.operation.source_revision, "profile_id": "pending", "slides": slides}
+                "index_revision": 0, "profile_id": "pending", "slides": slides}
 
     async def reconcile_search_one(self) -> bool:
         if self.search is None:
@@ -148,7 +148,8 @@ class Library:
             assert metadata is not None
             if previous.state == "deleting":
                 await self.search.delete(deck_id, metadata.library_id)
-                await asyncio.to_thread(self.store.search_deleted, deck_id)
+                await asyncio.to_thread(self.store.search_deleted, deck_id, expected_status=previous,
+                                         expected_key=key, expected_retry_key=retry_key)
                 return True
             if payload is not None and key is not None:
                 policy = await self.search.policy()
@@ -166,12 +167,15 @@ class Library:
                 ) if job.state in ("queued", "processing", "ready", "failed") else "queued"
                 status = SearchStatus(state=job_state,
                                       index_revision=previous.index_revision,
+                                      source_revision=previous.source_revision,
                                       generation_id=previous.generation_id, profile_id=policy.profile_id,
                                       job_id=job.job_id, eligible_slides=eligible_count,
                                       searchable_slides=searchable_count,
                                       blank_slides=eligible_count - searchable_count,
                                       hidden_slides=hidden_count)
-                await asyncio.to_thread(self.store.search_submitted, deck_id, status, retry_after=self.poll_interval)
+                await asyncio.to_thread(self.store.search_submitted, deck_id, status,
+                                         expected_status=previous, expected_key=key,
+                                         expected_retry_key=retry_key, retry_after=self.poll_interval)
             elif previous.job_id is not None and retry_key:
                 job = await self.search.retry(previous.job_id, retry_key)
                 retry_state: Literal["queued", "processing", "ready", "failed"] = cast(
@@ -179,7 +183,8 @@ class Library:
                 ) if job.state in ("queued", "processing", "ready", "failed") else "failed"
                 status = previous.model_copy(update={"state": retry_state, "error": None})
                 await asyncio.to_thread(self.store.search_submitted, deck_id, status,
-                                         retry_after=self.poll_interval)
+                                         expected_status=previous, expected_key=key,
+                                         expected_retry_key=retry_key, retry_after=self.poll_interval)
             elif previous.job_id is not None:
                 remote = await self.search.job(previous.job_id)
                 if (remote.deck_id != deck_id or remote.generation_id != previous.generation_id
@@ -187,6 +192,8 @@ class Library:
                     raise SearchError("invalid_search_response", "Search returned an unexpected indexing job.")
                 status = self.search.public_status(remote)
                 await asyncio.to_thread(self.store.search_submitted, deck_id, status,
+                                         expected_status=previous, expected_key=key,
+                                         expected_retry_key=retry_key,
                                          retry_after=self.poll_interval if status.state in ("queued", "processing") else 0)
             return True
         except SearchError as error:
@@ -196,7 +203,9 @@ class Library:
                 "state": "deleting" if deleting else "queued" if error.retryable else "failed",
                 "error": ErrorDetail(code=error.code, message=error.message, retryable=error.retryable),
             })
-            await asyncio.to_thread(self.store.search_submitted, deck_id, status, retry_after=delay)
+            await asyncio.to_thread(self.store.search_submitted, deck_id, status,
+                                     expected_status=previous, expected_key=key,
+                                     expected_retry_key=retry_key, retry_after=delay)
         return True
 
     def retry_search(self, deck_id: UUID, idempotency_key: str) -> SearchStatus:
@@ -226,7 +235,7 @@ class Library:
                 deck = self.store.deck(group.deck_id)
                 current = deck.search
                 if (deck.state not in ("extracted", "processing", "failed") or deck.generation_id is None or current is None
-                        or current.state != "ready" or current.index_revision != deck.source_revision
+                        or current.state != "ready" or current.source_revision != deck.source_revision
                         or current.generation_id != deck.generation_id or current.profile_id != result.profile_id):
                     continue
                 manifest = self.store.manifest(group.deck_id, deck.generation_id)

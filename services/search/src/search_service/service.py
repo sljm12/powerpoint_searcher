@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import time
 from typing import Any
 
 from tokenizers import Tokenizer
@@ -116,25 +117,27 @@ class Search:
     async def query(self, request: SearchRequest) -> SearchResponse:
         if request.profile_id != self.profile_id:
             raise SearchError(409, "profile_conflict", "Search request does not match active profile.")
-        deadline = asyncio.get_running_loop().time() + self.settings.query_timeout
+        deadline = time.monotonic() + self.settings.query_timeout
         warning = None
         vector: list[float] | None
         try:
             text = self.settings.query_prefix + request.query
             if len(self.tokenizer.encode(text).ids) > self.settings.max_input_tokens:
                 raise SearchError(413, "query_too_large", "Query exceeds the configured model token limit.")
-            reserve = self.settings.database_statement_timeout_ms / 1000 + 0.2
-            embedding_timeout = max(0.1, min(self.settings.embedding_timeout, self.settings.query_timeout - reserve))
-            vector = (await asyncio.wait_for(
-                self.embeddings.embed([text], retry_indexing=False),
-                timeout=embedding_timeout,
-            ))[0]
+            reserve = min(0.25, self.settings.query_timeout / 2)
+            embedding_timeout = min(self.settings.embedding_timeout, deadline - time.monotonic() - reserve)
+            if embedding_timeout <= 0:
+                raise TimeoutError
+            vector = (await asyncio.wait_for(self.embeddings.embed([text], retry_indexing=False),
+                                              timeout=embedding_timeout))[0]
         except (EmbeddingError, TimeoutError):
             vector = None
             warning = WarningDetail(code="semantic_unavailable",
                                      message="Semantic matching is unavailable. These results use slide text only.")
         try:
-            return await asyncio.wait_for(asyncio.to_thread(self.store.search, request, vector, warning),
-                                          timeout=max(0.1, deadline - asyncio.get_running_loop().time()))
+            return await asyncio.wait_for(
+                asyncio.to_thread(self.store.search, request, vector, warning, deadline=deadline),
+                timeout=max(0, deadline - time.monotonic()),
+            )
         except TimeoutError:
             raise SearchError(504, "search_timeout", "Search exceeded its configured response deadline. Try again.", True) from None

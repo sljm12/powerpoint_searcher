@@ -340,6 +340,7 @@ class Deck(Record):
 class SearchStatus(Record):
     state: Literal["not_configured", "queued", "processing", "ready", "failed", "deleting"]
     index_revision: int = Field(ge=0)
+    source_revision: int = Field(default=0, ge=0)
     generation_id: UUID | None = None
     profile_id: str | None = None
     job_id: UUID | None = None

@@ -19,7 +19,7 @@ The service uses the OpenAI Python client against an OpenAI-compatible embedding
 | `SEARCH_TOKEN` | Shared service credential used by the library when calling search. | Yes for authenticated API use | Set a long random secret; do not expose it to the browser. |
 | `SEARCH_DATABASE_URL` | PostgreSQL connection URL for the search-owned database. | Yes for search and migration | Use a dedicated database, not the library metadata database. |
 | `SEARCH_DATABASE_CONNECT_TIMEOUT_SECONDS` | Maximum time to establish a database connection. | No | `5` seconds. |
-| `SEARCH_DATABASE_STATEMENT_TIMEOUT_SECONDS` | PostgreSQL statement timeout. | No | `5000` seconds (converted to milliseconds). |
+| `SEARCH_DATABASE_STATEMENT_TIMEOUT_SECONDS` | Maximum PostgreSQL statement timeout for operations outside a search request. Search statements are capped by the remaining request deadline. | No | `5` seconds (converted to milliseconds). |
 | `SEARCH_QUERY_TIMEOUT_SECONDS` | Overall query time budget, including embedding and retrieval. | No | `10` seconds. |
 | `SEARCH_EMBEDDING_BASE_URL` | OpenAI-compatible API base URL; the client appends the embeddings route. | Yes for readiness and migration | Local mode: loopback HTTP. Cloud mode: HTTPS base URL, without credentials, query, fragment, or `/embeddings` suffix. |
 | `SEARCH_EMBEDDING_API_KEY` | Bearer credential for the embedding endpoint. | Conditional | Required by authenticated providers such as OpenRouter; may be blank for a local endpoint that needs no key. |

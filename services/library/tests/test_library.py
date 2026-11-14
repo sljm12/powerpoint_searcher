@@ -431,28 +431,43 @@ def test_search_intent_is_durable_and_deletion_queues_a_fence(tmp_path: Path) ->
     assert work is not None
     published = Manifest.model_validate(manifest(accepted.deck_id, uuid4(), 1,
         hashlib.sha256(b"deck").hexdigest(), "team.pptx"))
-    payload = {"deck_id": str(accepted.deck_id), "slides": [{"slide_number": 1, "native_text": "Native text"}]}
+    payload = {"deck_id": str(accepted.deck_id), "index_revision": 0,
+               "slides": [{"slide_number": 1, "native_text": "Native text"}]}
     store.publish(work, published, payload, "stable-search-key", True)
     assert store.deck(accepted.deck_id).search is not None
     assert store.deck(accepted.deck_id).search.state == "queued"
+    record = store._deck(accepted.deck_id)
+    assert record.search_index_revision == 1
+    assert record.search is not None and record.search.source_revision == 1
+    assert payload["index_revision"] == 1
+    assert record.next_search_index_revision(1) == 2
     store.close()
 
     restored = Store(data, search_configured=True)
     queued = restored.search_work()
-    assert queued is not None and queued[2] == "stable-search-key"
+    assert queued is not None and queued[2] == "stable-search-key-1"
     assert queued[1] == payload
     failed = SearchStatus(state="failed", index_revision=1, generation_id=published.generation_id,
                          profile_id="profile", job_id=uuid4(), error=ErrorDetail(
                              code="embedding_unavailable", message="Retry safely.", retryable=True))
-    restored.search_submitted(accepted.deck_id, failed)
+    assert restored.search_submitted(accepted.deck_id, failed, expected_status=queued[3],
+                                    expected_key=queued[2], expected_retry_key=queued[4])
     retry = restored.retry_search(accepted.deck_id, "search-retry-key")
     assert retry.state == "queued" and retry.error is None
     assert restored.retry_search(accepted.deck_id, "search-retry-key").state == "queued"
     retry_work = restored.search_work()
     assert retry_work is not None and retry_work[4] is not None
     restored.delete(accepted.deck_id)
+    assert not restored.search_submitted(
+        accepted.deck_id, failed, expected_status=retry_work[3],
+        expected_key=retry_work[2], expected_retry_key=retry_work[4],
+    )
     fence = restored.search_work()
     assert fence is not None and fence[0] == accepted.deck_id and fence[3].state == "deleting"
+    assert restored.search_deleted(
+        accepted.deck_id, expected_status=fence[3], expected_key=fence[2], expected_retry_key=fence[4]
+    )
+    assert not restored._deck(accepted.deck_id, allow_deleted=True).search_delete_pending
     restored.close()
 
 

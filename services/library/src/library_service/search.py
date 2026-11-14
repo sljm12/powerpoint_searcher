@@ -134,6 +134,7 @@ class SearchClient:
                      "retryable": bool(job.error.get("retryable", False))}
         from .models import ErrorDetail
         return SearchStatus(state=state, index_revision=job.index_revision, generation_id=job.generation_id,
+                            source_revision=job.source_revision,
                             profile_id=job.profile_id, job_id=job.job_id,
                             completed_segments=job.completed_segments, total_segments=job.total_segments,
                             eligible_slides=job.eligible_slides, searchable_slides=job.searchable_slides,

@@ -3,10 +3,9 @@ from __future__ import annotations
 import asyncio
 import math
 from collections.abc import Sequence
-from typing import Any
 
 import httpx
-from openai import APIConnectionError, APIStatusError, APITimeoutError, AsyncOpenAI
+from openai import APIConnectionError, APIStatusError, APITimeoutError, AsyncOpenAI, omit
 
 from .settings import Settings
 
@@ -55,7 +54,11 @@ class Embeddings:
             response = await self.client.embeddings.create(
                 model=self.settings.embedding_model,
                 input=list(inputs),
-                dimensions=self.settings.embedding_request_dimensions,
+                dimensions=(
+                    self.settings.embedding_request_dimensions
+                    if self.settings.embedding_request_dimensions is not None
+                    else omit
+                ),
                 encoding_format="float",
             )
         except APITimeoutError:

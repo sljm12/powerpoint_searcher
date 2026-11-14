@@ -9,6 +9,8 @@ Run on Windows with Python 3.12.11 on 2026-11-08 from `services/library/`.
 | `uv run --locked ruff check src tests scripts` | All checks passed. |
 | `uv run --locked python scripts/check_database_workflow.py --self-check` | Driver self-check passed. |
 
+After the durable search revision and stale-response fencing changes, the full suite was rerun: 32 passed and 4 PostgreSQL-only tests skipped because no disposable test DSN is configured. The same mypy, Ruff, and workflow self-check commands passed. The search-intent regression also proves that a late submit response cannot replace a deletion state and that a successful deletion clears the local fence. No live database or remote deck was changed.
+
 The tests include schema-v1 backup and upgrade, original hash preservation, pending deletion preservation, missing-database refusal, marker mismatch refusal, incomplete-marker refusal before cleanup, recovery from an interrupted upgrade using the documented backup procedure, refusal of invalid legacy records and a mismatched schema before cleanup, persisted deck ordering, due-time ties, metadata transaction rollback, paths with spaces, and owner-lock release after failed startup. Existing authenticated API and deterministic extraction tests also pass.
 
 No live extraction workflow, browser gallery check, screenshot, Linux run, or capacity measurement was performed. These results do not establish LIBDB-1 live or performance acceptance.
@@ -37,3 +39,16 @@ Run on Windows with Python 3.12 and PostgreSQL 18.6 on 2026-11-08. The PostgreSQ
 The PostgreSQL tests cover configuration, safe 503 and health behavior, the database owner lock, root binding, populated-target refusal, both transfer directions, original hashes, unknown-UUID deletion fences, archive retention, stale-source refusal, resume after target activation, and shared upload/deletion/restart persistence on both backends. The workflow driver now has opt-in offline-transfer and storage-unavailable probes; only its self-check was run. These tests do not run the extraction worker against PostgreSQL.
 
 No outage timing, stalled-query responsiveness, 100-deck capacity probe, full extraction workflow, frontend gallery check, Linux run, screenshot, or operator review was performed. The 5 second connection and statement controls, 1 second lock control, keepalives, and TCP user timeout were exercised on successful PostgreSQL connections. Broken-network timing remains unverified.
+
+## Text-search continuation check
+
+On 2026-11-14, the library suite passed with 32 tests and 4 PostgreSQL-only tests skipped because `LIBRARY_TEST_POSTGRES_DSN` was not configured. Mypy and Ruff passed; the database workflow driver's `--self-check` passed. Authenticated policy and a read-only synthetic search query succeeded against the running library. The query returned lexical-only degraded results from search; no upload, reprocess, retry, deletion, or database mutation was performed.
+
+Run from `services/library/`:
+
+| Command | Result |
+| --- | --- |
+| `uv run --locked pytest -q` | 32 passed, 4 skipped, 1 deprecation warning. |
+| `uv run --locked mypy src` | No issues in 10 source files. |
+| `uv run --locked ruff check src tests scripts` | All checks passed. |
+| `uv run --locked python scripts/check_database_workflow.py --self-check` | Driver self-check passed. |

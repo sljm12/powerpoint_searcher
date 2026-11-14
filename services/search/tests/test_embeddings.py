@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import httpx
@@ -31,7 +32,7 @@ def test_reorders_response_by_index_and_normalizes_vectors() -> None:
         def respond(request: httpx.Request) -> httpx.Response:
             assert request.url.path == "/v1/embeddings"
             assert json.loads(request.read()) == {
-                "input": ["first", "second"], "model": "model", "dimensions": None,
+                "input": ["first", "second"], "model": "model",
                 "encoding_format": "float",
             }
             return httpx.Response(200, json={"model": "model", "data": [
@@ -45,6 +46,28 @@ def test_reorders_response_by_index_and_normalizes_vectors() -> None:
             await client.close()
 
     assert asyncio.run(run()) == [[0.6, 0.8], [0.0, 1.0]]
+
+
+def test_sends_dimensions_only_when_configured() -> None:
+    async def run() -> None:
+        config = replace(settings(), embedding_request_dimensions=2)
+
+        def respond(request: httpx.Request) -> httpx.Response:
+            assert json.loads(request.read()) == {
+                "input": ["text"], "model": "model", "dimensions": 2,
+                "encoding_format": "float",
+            }
+            return httpx.Response(200, json={"model": "model", "data": [
+                {"index": 0, "embedding": [3, 4]},
+            ]})
+
+        client = Embeddings(config, httpx.MockTransport(respond))
+        try:
+            assert await client.embed(["text"]) == [[0.6, 0.8]]
+        finally:
+            await client.close()
+
+    asyncio.run(run())
 
 
 @pytest.mark.parametrize("vector", [[0, 0], [float("inf"), 1]])
