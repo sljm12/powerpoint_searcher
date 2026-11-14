@@ -1,2 +1,5 @@
 .audit/
 .uv-cache/
+*.pyc
+*.bat
+*.ps1
