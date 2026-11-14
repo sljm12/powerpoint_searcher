@@ -91,7 +91,7 @@ Start extraction separately using its [README](../powerpoint-extraction/README.m
 
 ## Public interface
 
-The frontend calls only library HTTP routes. All content routes require `Authorization: Bearer <LIBRARY_TOKEN>`. The extraction token remains server-side. `LIBRARY_ORIGINS` is a comma-separated list of exact frontend origins for browser access. CORS is disabled when that variable is empty.
+The web gateway calls library HTTP routes with `Authorization: Bearer <LIBRARY_TOKEN>`. Keep the library listener private and do not expose it to browsers or public clients. The gateway is the browser access boundary and handles the shared passphrase, session, and CSRF checks. Direct API clients still need the library bearer token. CORS is disabled by default.
 
 The [API contract](API.md) defines upload, operation status, retry, reprocessing, generation manifests, original and graphic downloads, deletion, and a minimal deletion-fence export. Configuration rejects extraction URLs with embedded credentials. Outbound HTTP has explicit timeouts, ignores proxy environment variables, and does not follow redirects.
 
