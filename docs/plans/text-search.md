@@ -5,7 +5,7 @@ Use a separate search-owned PostgreSQL database for full-text search and pgvecto
 Combine lexical and semantic slide ranks with reciprocal rank fusion before grouping decks. Keep the library's existing database choices and ownership guards.
 Rank decks by their best matching slide and support multilingual queries.
 Keep originals, previews, notes policy, retry safety, and deletion guarantees intact.
-Implementation was explicitly authorized on 2026-11-09 on branch `feature/text-search`. No deployment, merge, PR, or library data migration is authorized.
+Implementation was explicitly authorized on 2026-11-09 with `feature/text-search` as the intended branch. The verified commits are currently on `main` (`0fe52ca`, `6426f6f`); no PR was opened. No deployment, merge, or real library data migration is authorized.
 
 ## Current execution status
 
@@ -39,8 +39,8 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 
 ### Arm the program
 
-- [ ] State this plan and protocol to the operator. Start implementation only on an explicit instruction to execute.
-- [ ] On that instruction, write the plan path, S1 then S2 then S3, the verification rule, operator merge authority, and the done condition into `notes.md` in the program's store at `.audit/text-search/`.
+- [x] State this plan and protocol to the operator. Start implementation only on an explicit instruction to execute.
+- [x] On that instruction, write the plan path, S1 then S2 then S3, the verification rule, operator merge authority, and the done condition into `notes.md` in the program's store at `.audit/text-search/`.
 - [ ] Read the execution playbook, `skills/swarm/SKILL.md`, `skills/how/SKILL.md`, `skills/poteto-mode/playbooks/opening-a-pr.md`, and the feature design from the installed plugin or repository as applicable.
 - [ ] For unattended execution, arm an hourly audit using an available scheduler. Codex has no native pstack loop here. If no scheduler exists, record that limitation and keep execution attended.
 - [ ] At each audit, inspect live processes and evidence, repair drift, and post a short status message only for a new result, failure, or owner decision. Keep the decision trail under `.audit/text-search/`.
@@ -67,8 +67,10 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 ### Boot recipe, for every live lane
 
 - [ ] Use an isolated worktree at the reviewed head and private disposable data roots. Never use a live team library for destructive checks.
-- [ ] For S1, provision a disposable local PostgreSQL database with the pinned pgvector extension. Configure `SEARCH_DATABASE_URL`, apply search-owned migrations, then start search from `services/search` using `uv sync --locked` and `uv run --locked python -m search_service`. Start the deterministic fake endpoint or explicitly selected real local endpoint as documented by that PR. Keep the database separate from library metadata and verify missing-extension and database-unavailable readiness errors.
-- [ ] For S2 and S3, additionally start library with `uv run --locked python -m library_service`, and extraction using its README in Linux or WSL2. Wait for health before submitting work. Native Windows rendering currently fails closed.
+- [x] For S1, configure the disposable database from `services/search/.env`, verify PostgreSQL 18.6 and pgvector 0.8.7, and apply the search-owned migration. The search database is separate from library metadata.
+- [ ] Start search from `services/search` and verify missing-extension and database-unavailable readiness errors; run those failure lanes with isolated settings.
+- [x] Start the configured library, extraction, and search listeners and verify their health endpoints before service checks.
+- [ ] Run extraction through its documented Linux or WSL2 workflow; native Windows rendering fails closed.
 - [ ] For S3, run frontend `npm ci` and `npm run dev`. Drive the rendered app with available browser automation, including keyboard and responsive checks. Drive `/tests/gallery.html` and `/tests/search.html` as fixtures.
 - [ ] For API lanes, use the new workflow scripts against actual HTTP listeners. Their `--self-check` modes validate fixtures only and cannot replace live evidence. Read tokens from environment variables.
 - [ ] Save JSON receipts, timings, and screenshots under `.audit/text-search/<PR>/lane-<n>/`. For an API lane, capture its actual terminal response as a screenshot. Do not capture private notes or credentials.
@@ -79,27 +81,34 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 
 **Files.**
 
-- [ ] Create `services/search/README.md`, `API.md`, `.env.example`, `pyproject.toml`, and `uv.lock`.
-- [ ] Create `services/search/src/search_service/` with settings, boundary models, embedding adapter, segment builder, PostgreSQL store and migrations, durable worker, lexical and vector retrieval, slide fusion, HTTP app, and entry point.
-- [ ] Create `services/search/tests/`, sanitized fixtures, `scripts/check_search_workflow.py`, and `scripts/evaluate_search.py`.
-- [ ] Record endpoint compatibility, PostgreSQL and pgvector versions, migration checks, query plans, model selection, and resource receipts in `services/search/evidence/checks.md`.
+- [x] Create `services/search/README.md`, `API.md`, `.env.example`, `pyproject.toml`, and `uv.lock`.
+- [x] Create `services/search/src/search_service/` with settings, boundary models, embedding adapter, segment builder, PostgreSQL store and migrations, durable worker, lexical and vector retrieval, slide fusion, HTTP app, and entry point.
+- [x] Create `services/search/tests/` and sanitized unit fixtures.
+- [ ] Create `scripts/check_search_workflow.py` and `scripts/evaluate_search.py`; neither script exists yet.
+- [x] Record PostgreSQL/pgvector versions, migration, and live workflow results in `services/search/evidence/smoke.md`.
+- [ ] Record query plans, held-out model compatibility, and resource measurements in search evidence.
 
 **Build.**
 
-- [ ] Run the endpoint compatibility and PostgreSQL retrieval probes in Appendix A before settling the model and query implementation. PostgreSQL is selected, not conditional on beating SQLite. Record observed behavior and revise provisional budgets from evidence.
-- [ ] Implement the records, profile configuration, bounded chunking, and authenticated REST routes in the design. Add generated `simple` `tsvector` columns and GIN indexes, `websearch_to_tsquery` and `ts_rank_cd` lexical retrieval, profile-isolated `vector(n)` embeddings, and exact `<=>` cosine retrieval. Reuse established Python service patterns without importing another service's code.
-- [ ] Collapse each retrieval path to unique slides, combine one-based ranks with equal-weight RRF using constant 60, then rank decks by their best slide. Keep deterministic ties and rank all eligible slides before limiting deck groups. Return explicit score kinds and labelled lexical fallback on query-embedding failure.
-- [ ] Persist keyed index jobs and snapshots before acknowledgement. Atomically publish complete lexical and vector builds through one active pointer. Make supersession monotonic, retry bounded, and deletion permanently fenced. Serialize publication and deletion on the same deck identity so a late worker cannot republish either representation.
-- [ ] Implement a deterministic fake embedding endpoint for contract tests and an explicit real-endpoint mode for compatibility and evaluation. Provision the pinned tokenizer locally and document every external dependency.
-- [ ] Keep one query profile per active corpus. Report maintenance during profile changes. Make the service start independently and report actionable not-ready configuration.
+- [x] Verify endpoint dimension compatibility through the migration probe and exercise PostgreSQL lexical/vector retrieval, revision replacement, stale-revision rejection, and deletion against the disposable database.
+- [ ] Complete Appendix A language, tokenizer, model-license, query-plan, and resource probes; revise provisional budgets from measured evidence.
+- [x] Implement records, profile configuration, bounded chunking, authenticated REST routes, generated `simple` `tsvector`/GIN retrieval, profile-isolated `vector(n)` embeddings, and exact `<=>` cosine retrieval.
+- [x] Collapse each retrieval path to unique slides, combine ranks with deterministic equal-weight RRF, rank decks by their best slide, return score kinds, and label lexical fallback.
+- [x] Persist keyed jobs and snapshots, atomically publish complete builds, supersede older revisions, bound retries, and permanently fence deleted decks.
+- [x] Provide deterministic fake embedding behavior in tests and a configured real endpoint probe. The tokenizer file is available locally but is not tracked in this commit.
+- [ ] Track/package the tokenizer artifact and record model license and multilingual compatibility evidence.
+- [x] Enforce one active profile, independent startup, and actionable not-ready states.
+- [ ] Add staged maintenance and atomic profile activation; the reindex API is not implemented.
 
 **You see.**
 
-- [ ] A service started independently accepts a text snapshot, exposes job progress, returns the expected fused unique slide groups, labels lexical-only fallback, and rejects late work after deletion through both retrieval paths.
+- [x] A service started independently accepts snapshots and exposes progress; live PostgreSQL tests verify hybrid retrieval, current-revision replacement, and no results after deletion. The earlier library query also verified labelled lexical fallback.
+- [ ] Hold an embedding request in flight during deletion and verify late work cannot republish lexical or vector results.
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] Cover chunk boundaries and Unicode, notes-only hits, duplicate channels, empty and hidden slides, shuffled embedding responses, invalid dimensions and numbers, timeout and retry exhaustion, restart, duplicate keys, supersession, and deletion races. Add lexical phrases and empty parsed queries, deterministic RRF, one vote per slide per path, conflicting path ranks, long-deck grouping, lexical-only fallback including zero hits, and maintenance rejection. Run migrations, constraints, atomic publication, restart, and deletion checks against disposable real PostgreSQL with pgvector. From `services/search`, run `uv run --locked pytest -q`, `uv run --locked mypy src`, and `uv run --locked ruff check src tests scripts`.
+- [x] Run `uv run --env-file .env --locked pytest -q`, mypy, and Ruff; run the migration and live PostgreSQL workflow for indexing, idempotency, same-source revision replacement, stale-revision rejection, retrieval, deletion cleanup, and permanent fencing.
+- [ ] Complete the listed unit matrix for notes-only and duplicate channels, empty queries, retry exhaustion, cancellation/rollback and connection reuse, in-flight deletion, zero-hit fallback, and maintenance rejection.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on the configured `swarm workers` model at the PR head, per the boot recipe.
 
@@ -137,19 +146,21 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 
 **Files.**
 
-- [ ] Edit `services/library/src/library_service/models.py`, `api.py`, `service.py`, `store.py`, and `metadata.py` as required for additive search status and durable search intents.
-- [ ] Create `services/library/src/library_service/search.py` for the HTTP adapter. Update `migrate.py` and its tests for every new persisted record.
-- [ ] Edit `services/library/API.md`, `README.md`, `tests/test_library.py`, `tests/test_metadata.py`, and `tests/test_database_migration.py`.
-- [ ] Create `services/library/scripts/check_search_workflow.py` and extend `services/library/evidence/checks.md`.
+- [x] Update library models, API, service, and store for additive status, durable search intents, revision fencing, and safe worker reconciliation; metadata remains in its existing JSON record format, so no schema migration was needed.
+- [x] Provide the library-owned search HTTP adapter and update API/docs plus library and database tests.
+- [x] Extend `services/library/evidence/checks.md` with SQLite and PostgreSQL verification receipts.
+- [ ] Create `services/library/scripts/check_search_workflow.py`.
 
 **Build.**
 
-- [ ] Add optional search status while preserving the meaning of `extracted`. Add bounded search settings and sanitized authenticated policy disclosure.
-- [ ] Atomically queue search intents with manifest publication, export text snapshots over HTTP, poll jobs, backfill existing extracted manifests, and recover interrupted submissions.
-- [ ] Add authenticated query, per-deck more-matches, retry, and reindex gateway actions. Specify exact reindex routes and operation schemas in `API.md` before coding their clients. Preserve idempotency and observable job status.
-- [ ] Validate search results against canonical current identities before returning text, counts, and generation-bound assets. Refill filtered candidate windows without sending stale hits. Preserve retrieval mode, score kind, degradation, and safe warnings through the gateway in both hybrid and lexical-only responses.
-- [ ] Fence locally before deletion, cancel search work, and keep deletion pending until search cleanup completes. Cover unknown deck deletion and restore replay.
-- [ ] Extend both library database backends and offline transfer validation for new intents, index revisions, and search deletion state. Do not change existing database ownership checks.
+- [x] Add optional search status while preserving `extracted`, bounded search settings, and sanitized authenticated policy disclosure.
+- [x] Atomically persist new search intents with manifest publication, export text over HTTP, poll jobs, and recover interrupted submissions.
+- [ ] Backfill pre-existing extracted manifests on enablement; no backfill coordinator is implemented.
+- [x] Add authenticated query, per-deck more-matches, and retry gateway actions with idempotent job status.
+- [ ] Add the durable profile-reindex gateway action and operation schema.
+- [x] Validate search results against current identity, generation, profile, and deletion state; preserve safe result metadata and refill filtered candidate windows.
+- [x] Fence locally before deletion, cancel search work, and keep deletion pending through remote cleanup; test unknown deck fencing.
+- [ ] Verify search intent/index-revision/deletion-state transfer and replay across both metadata backends and offline restore.
 
 **You see.**
 
@@ -157,7 +168,9 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] Add fake-search HTTP contract cases for response validation, lost responses, stale generations, deletion, reindex barriers, and service outages. Cover hybrid and degraded lexical-only responses, score kinds, zero lexical hits, and database 503 responses. Run library `uv run --locked pytest -q`, `uv run --locked mypy src`, `uv run --locked ruff check src tests scripts`, and `uv run --locked python scripts/check_database_workflow.py --self-check`. Run PostgreSQL migration integration cases against a disposable local database.
+- [x] Run library pytest, mypy, Ruff, database workflow self-check, and PostgreSQL integration tests against per-test databases created from the disposable server; 36 tests passed with no skips.
+- [x] Cover core search client authorization, policy validation, status handling, retry, deletion fencing, stale response CAS, and sanitized service failures.
+- [ ] Cover lost responses, reindex barriers, outages across the full gateway, backup/restore, and transfer of search state.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on the configured `swarm workers` model at the PR head, per the boot recipe.
 
@@ -195,19 +208,21 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 
 **Files.**
 
-- [ ] Edit `frontend/src/client.ts`, `main.ts`, `gallery.ts`, and `style.css`.
-- [ ] Edit `frontend/tests/client.test.mjs`, `tests/gallery.html`, and `README.md`; create `frontend/tests/search.html`.
-- [ ] Add sanitized owner-labelled fixtures and evidence under `services/search/` and `frontend/evidence/`.
+- [x] Implement the search client, UI, selected-slide gallery entry, and styles in the frontend modules.
+- [x] Update client/gallery fixtures and frontend README; create `frontend/tests/search.html`.
+- [ ] Add owner-labelled relevance fixtures and held-out evaluation receipts; only synthetic UI fixtures exist.
 - [ ] Update tracked deployment documentation and orchestration after inspecting ownership. Preserve the existing untracked launch scripts.
 
 **Build.**
 
-- [ ] Runtime-validate search, policy, job, and additive deck status responses, including retrieval mode, score kind, degradation, and safe warnings. Keep authentication in memory and suppress stale asynchronous responses.
-- [ ] Add submit-based search with ranked deck groups, best-slide previews, channel-labelled snippets, more matches, indexing coverage, and clear loading, empty, lexical-only degradation, failure, and maintenance states. Explain that lexical fallback cannot provide semantic or cross-language matching, including when it returns no hits.
-- [ ] Add an optional selected-slide entry point to `openGallery` and update every caller. Validate generation and slide identity before opening. Preserve downloads, warnings, focus restoration, and image cleanup.
-- [ ] Create a browser fixture that exercises the actual search and gallery modules. Verify keyboard controls, responsive layout, text escaping, disconnect, and stale-result cleanup.
-- [ ] Collect owner-selected language labels and quality agreement. Run held-out real-model evaluation and the complete 100-deck local workflow before declaring retrieval quality sufficient.
-- [ ] Document independent service startup, local PostgreSQL and pgvector provisioning, separate database credentials, search-owned migrations, OpenAI-compatible settings, local and cloud disclosures, lexical fallback, backfill, reindex maintenance, retry, backup, deletion, and restore. Include database and extension readiness failures and stopped-service restore commands.
+- [x] Runtime-validate search, policy, job, and deck status responses; keep authentication in memory and suppress stale asynchronous responses.
+- [x] Add submit-based grouped search, best-slide previews, channel-labelled snippets, more matches, coverage, and loading/empty/degraded/failure/maintenance messages.
+- [x] Add selected-slide gallery entry with generation/slide validation while preserving download and gallery behavior.
+- [x] Create `frontend/tests/search.html` to exercise the real search and gallery modules, including plain-text snippet rendering and exact-slide open.
+- [ ] Run the browser fixture at narrow and wide sizes; verify keyboard-only use, disconnect races, and stale preview cleanup in browser automation.
+- [ ] Collect owner-approved language/quality criteria and run held-out real-model and 100-deck evaluation.
+- [x] Document independent startup, database provisioning, settings, cloud disclosure, lexical fallback, retry, backup, deletion, and restore.
+- [ ] Document backfill and profile-maintenance operations after implementing them; run stopped-service restore verification.
 
 **You see.**
 
@@ -215,7 +230,8 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
-- [ ] Extend malformed-response client cases and gallery selected-slide cases. Run frontend `npm run check`, `npm test`, and `npm run build`. Run affected library and search contract tests once. Exercise browser fixtures against actual modules.
+- [x] Run frontend `npm run check`, `npm test`, and `npm run build`; extend malformed-response and selected-slide unit cases.
+- [ ] Exercise browser fixtures in browser automation against actual modules.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on the configured `swarm workers` model at the PR head, per the boot recipe.
 
@@ -249,7 +265,7 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 
 ## Close the program
 
-- [ ] Check each completed box against its actual evidence and record unsupported cases.
+- [x] Check completed boxes against their evidence and record unsupported cases.
 - [ ] Confirm the complete upload, index, multilingual query, precise-slide preview, original download, retry, reprocess, and delete workflow on the running local system.
 - [ ] Obtain owner agreement on the language set and retrieval acceptance criteria before declaring quality sufficient.
 - [ ] Deliver PR links, verification receipts, measurements, configuration instructions, and remaining limitations. Do not declare visual search complete.
