@@ -39,6 +39,12 @@ def create_app() -> FastAPI:
     local = os.environ.get("GATEWAY_LOCAL_MODE", "false").lower() == "true"
     allowed_hosts = {item.strip().lower() for item in os.environ.get("GATEWAY_ALLOWED_HOSTS", "").split(",") if item.strip()}
     app_origin = os.environ.get("GATEWAY_ORIGIN", "http://127.0.0.1:8080" if local else "")
+    allowed_origins = {app_origin}
+    if local:
+        allowed_origins.add("http://127.0.0.1:5173")
+    allowed_origins.update(
+        item.strip() for item in os.environ.get("GATEWAY_ALLOWED_ORIGINS", "").split(",") if item.strip()
+    )
     frontend = Path(os.environ.get("FRONTEND_DIST", "../../frontend/dist")).resolve()
     if len(token) < 32 or len(passphrase_hash) != 128 or len(salt_text) < 16:
         raise RuntimeError("Set LIBRARY_TOKEN, a scrypt TEAM_PASSPHRASE_HASH, and TEAM_PASSPHRASE_SALT.")
@@ -63,7 +69,7 @@ def create_app() -> FastAPI:
         if request.headers.get("host", "").lower() not in allowed_hosts:
             return False
         origin = request.headers.get("origin")
-        return origin is None or origin == app_origin
+        return origin is None or origin in allowed_origins
 
     def find_session(request: Request) -> tuple[str, Session] | None:
         sid = request.cookies.get("library_session", "")
