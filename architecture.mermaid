@@ -1,0 +1,57 @@
+flowchart TD
+  subgraph UI["Frontend"]
+    A["Show upload policy<br/>including speaker notes and search disclosure"]
+    B["User selects and uploads .pptx"]
+    C["Show queued / processing status"]
+    D["Refresh deck status every 1.5 seconds"]
+    E["Show extraction and search status,<br/>or failure and retry action"]
+    A --> B
+    C --> D --> E
+  end
+
+  subgraph Library["Library service"]
+    F["POST /v1/decks<br/>check multipart request, filename and size"]
+    G["Save original deck and create queued operation"]
+    H["Background worker submits deck to extraction<br/>with captured notes policy and idempotency key"]
+    I["Poll extraction job"]
+    J["Fetch and validate completed manifest<br/>deck, revision, checksum and notes policy"]
+    K["Publish extracted generation"]
+    L{"Search service configured?"}
+    M["Queue text indexing payload<br/>native text and speaker notes per slide"]
+    N["Expose deck and search status to frontend"]
+    F --> G --> H --> I
+    I -->|"still processing"| I
+    I -->|"succeeded"| J --> K --> L
+    L -->|"yes"| M --> N
+    L -->|"no"| N
+  end
+
+  subgraph Extraction["PowerPoint extraction service"]
+    O["Receive uploaded file and enforce upload limit"]
+    P["Validate .pptx package<br/>and slide count"]
+    Q["Queue extraction job"]
+    R["Confined worker parses slide content<br/>and applies notes policy"]
+    S["Render slide previews and graphic assets"]
+    T["Store generation manifest and assets"]
+    O --> P --> Q --> R --> S --> T
+  end
+
+  subgraph Search["Search service"]
+    U["Accept idempotent indexing job"]
+    V["Split native text and notes into token-sized segments"]
+    W["Create embeddings in batches"]
+    X["Store segments for lexical and semantic retrieval"]
+    Y["Publish index and report ready"]
+    U --> V --> W --> X --> Y
+  end
+
+  B --> F
+  H --> O
+  T -. "job status and manifest" .-> I
+  M --> U
+  Y -->|"search status becomes ready"| N
+
+  I -->|"failed"| Z["Extraction failed<br/>retry or reprocess"]
+  U -->|"failed"| AA["Search indexing failed<br/>retry indexing"]
+  Z --> N
+  AA --> N
