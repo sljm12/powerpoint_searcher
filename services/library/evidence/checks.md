@@ -9,7 +9,17 @@ Run on Windows with Python 3.12.11 on 2026-11-08 from `services/library/`.
 | `uv run --locked ruff check src tests scripts` | All checks passed. |
 | `uv run --locked python scripts/check_database_workflow.py --self-check` | Driver self-check passed. |
 
-After the durable search revision and stale-response fencing changes, the full suite was rerun: 32 passed and 4 PostgreSQL-only tests skipped because no disposable test DSN is configured. The same mypy, Ruff, and workflow self-check commands passed. The search-intent regression also proves that a late submit response cannot replace a deletion state and that a successful deletion clears the local fence. No live database or remote deck was changed.
+## Follow-up PostgreSQL test run
+
+On 2026-11-14, the operator authorized using the search service's `.env` PostgreSQL connection as the source for library integration tests. The fixture created and dropped a unique database per PostgreSQL case; it did not modify the `vectordb` schema or its rows.
+
+| Command | Result |
+| --- | --- |
+| `uv run --locked --extra postgres pytest -q` | 36 passed, 1 Starlette deprecation warning; no skips. |
+
+This includes the four PostgreSQL-only cases that previously skipped without a configured test DSN. Temporary `library_case_*` databases were absent after the run.
+
+Earlier SQLite-only continuation run, before the operator designated the PostgreSQL server disposable: 32 passed and 4 PostgreSQL-only tests skipped. The same mypy, Ruff, and workflow self-check commands passed. The search-intent regression also proves that a late submit response cannot replace a deletion state and that a successful deletion clears the local fence. No live database or remote deck was changed during that earlier run.
 
 The tests include schema-v1 backup and upgrade, original hash preservation, pending deletion preservation, missing-database refusal, marker mismatch refusal, incomplete-marker refusal before cleanup, recovery from an interrupted upgrade using the documented backup procedure, refusal of invalid legacy records and a mismatched schema before cleanup, persisted deck ordering, due-time ties, metadata transaction rollback, paths with spaces, and owner-lock release after failed startup. Existing authenticated API and deterministic extraction tests also pass.
 

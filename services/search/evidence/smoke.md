@@ -22,6 +22,14 @@ After the deadline fix and final search-service restart, one authenticated direc
 
 The earlier library request confirms library-to-search routing and lexical fallback. The later direct search request confirms semantic embedding and hybrid retrieval. Neither request establishes relevance quality or performance. No deck content was returned or recorded in this receipt.
 
+## PostgreSQL-backed integration
+
+Date: 2026-11-14. The target from `services/search/.env` was PostgreSQL 18.6, pgvector 0.8.7, database `vectordb`, schema version 2. The search-owned migration/probe completed with `uv run --env-file .env --locked python -m search_service.migrate`.
+
+An authenticated live API run used fresh synthetic UUIDs and text. Two index jobs completed for the same source revision with index revisions 1 and 2. The run verified duplicate idempotency-key submission, retrieval at each active revision, stale-revision rejection, deletion, no results after deletion, and a permanent 410 fence against later indexing. SQL checks confirmed the test jobs had null payloads, their segments were absent, and no temporary library test databases remained. The intentional deletion fence and job receipts remain in the disposable search database.
+
+After the database run, `uv run --env-file .env --locked pytest -q` passed all 12 tests; mypy and Ruff passed. This verifies current-profile indexing and deletion against PostgreSQL. It does not test the unimplemented profile-maintenance/reindex workflow, multilingual relevance, or performance.
+
 ## Code checks
 
 Run from `services/search/` on 2026-11-14:
