@@ -1,6 +1,6 @@
 # Token-free frontend implementation plan
 
-Status: Not started. Team access without existing sign-in is confirmed. Implements the proposed shared-passphrase design in the [feature plan](token-free-frontend.md) after review.
+Status: Implemented; runtime acceptance pending. Team access without existing sign-in is confirmed. The gateway and frontend changes follow the shared-passphrase design in the [feature plan](token-free-frontend.md).
 
 ## Phase 1: settle and implement the server boundary
 
@@ -46,6 +46,44 @@ Checkpoint: deploy gateway configuration and frontend together. Rollback restore
 
 Completion requires the feature acceptance criteria on the running system. Builds and synthetic browser fixtures alone do not establish completion.
 
+## Implementation checkpoint — 2026-11-14
+
+Implemented the standalone Python gateway, scrypt passphrase configuration, bounded in-memory sessions and failed-login throttling, same-origin session and CSRF routes, fixed-origin streaming `/v1` proxy, and frontend session sign-in, retry, sign-out, and expiry handling. The library bearer-token middleware remains unchanged. Gateway API and deployment instructions are in `services/web-gateway/`.
+
+Frontend verification passed: `npm.cmd run check`, `npm.cmd test` (9 tests), and `npm.cmd run build`. `git diff --check` passed. Gateway checks are authored but could not run: this environment has no Python interpreter, and `uv python install 3.12` could not download one because network access is blocked. The gateway and full upload/search/download/delete workflow have not been exercised on a running local system. Do not treat the feature as acceptance-complete until phase 3 passes.
+
 ## Planning verification
 
 The planning task inspects the document diff, local links, and consistency with the constitution. Implementation, dependency lookups, application tests, and runtime verification are deferred until implementation is requested. The shared-passphrase choice and proposed session lifetime remain reviewable plan recommendations.
+
+## Runtime verification — 2026-11-15
+
+Deployment exercised: local mode, frontend at `http://localhost:5173`, gateway at `http://127.0.0.1:8080`. The passphrase is intentionally not recorded.
+
+- Sign-in returned 200 and established a session cookie. `GET /auth/session` returned authenticated state and a CSRF token. Sign-out returned 204; subsequent unauthenticated `GET /v1/decks` returned 401.
+- Authenticated policy reported notes enabled and search ready. The deck list loaded.
+- Uploaded the repository's synthetic `smartart-chevron.pptx`; the library reached `extracted`. Its manifest returned one slide and two assets.
+- Original download returned 200 and its SHA-256 matched the uploaded bytes. A slide preview download returned 200.
+- Search returned one hybrid result. After deletion reached `deleted`, a follow-up search no longer returned the synthetic deck.
+- Frontend checks passed: `npm.cmd run check`, `npm.cmd test` (9 tests), `npm.cmd run build`.
+- Gateway checks remain unrun: `uv` could not access a Python interpreter in this environment. Browser-level gallery interaction was not exercised; API manifest and asset routes were checked directly.
+
+Still pending: reload persistence; expiry, restart invalidation, throttling and password rotation; initial outage and retry behavior; wrong gateway credential and library timeout; browser traffic/static output credential inspection; unauthorized binary routes, cross-site writes and untrusted host/identity headers; network reachability from another machine; and opening the gallery, slide details, and graphic downloads through the browser UI. Runtime acceptance is not complete until these checks pass.
+
+### Phase 1 gateway verification — 2026-11-15
+
+- Protected API and binary requests without a session returned 401. Authenticated mutation without a CSRF token returned 403. Authenticated requests with a disallowed origin or host returned 403; login with a disallowed origin also returned 403.
+- An authenticated policy request with a caller-supplied invalid `Authorization` header still returned 200, confirming the gateway uses its configured server credential. The response included `Cache-Control: no-store` and `X-Request-ID`.
+- An invalid library route returned a sanitized not-found envelope; it did not disclose the configured upstream URL or bearer credential.
+- Gateway automated checks remain blocked: `uv run` cannot access a Python interpreter, and the gateway `.venv` pytest launcher failed to spawn its Python child process (permission denied).
+- Upstream timeout/outage behavior and upstream header stripping were not exercised against a controlled mock server. No service configuration was changed to induce an outage. Gateway verification is therefore partial, not a complete Phase 1 sign-off.
+
+### Gateway checks rerun — 2026-11-15
+
+After the Python environment was repaired, ran from `services/web-gateway/` with `UV_CACHE_DIR` set to the repository's `.uv-cache`:
+
+- `uv run ruff check src tests scripts` failed with four findings: two import-order violations, one `AsyncIterator` import location, and one broad `Exception` catch.
+- `uv run mypy src` passed: no issues in three source files.
+- `uv run pytest` passed: 1 test. Pytest emitted a Starlette deprecation warning about the `httpx` TestClient integration.
+
+The interpreter access issue is resolved in this environment. The earlier failure record above is historical. Phase 1 remains partially verified due to the Ruff findings and untested upstream timeout/outage and header stripping cases.
