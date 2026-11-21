@@ -114,10 +114,11 @@ class Search:
                 except TimeoutError:
                     pass
 
-    async def query(self, request: SearchRequest) -> SearchResponse:
+    async def query(self, request: SearchRequest, *, deadline: float | None = None) -> SearchResponse:
         if request.profile_id != self.profile_id:
             raise SearchError(409, "profile_conflict", "Search request does not match active profile.")
-        deadline = time.monotonic() + self.settings.query_timeout
+        if deadline is None:
+            deadline = time.monotonic() + self.settings.query_timeout
         warning = None
         vector: list[float] | None
         try:

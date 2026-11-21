@@ -69,12 +69,15 @@ function showNotesPolicy(includeNotes: boolean): void {
 }
 
 function showSearchPolicy(policy: SearchPolicy): void {
+  if (policy.maintenance || (searchPolicy !== null && searchPolicy.profile_id !== policy.profile_id)) resetSearch();
   searchPolicy = policy;
   searchDisclosure.textContent = policy.disclosure;
-  searchButton.disabled = policy.state !== "ready";
-  if (policy.state !== "ready") searchStatus.textContent = policy.state === "unavailable"
+  searchButton.disabled = policy.state !== "ready" || policy.maintenance;
+  if (policy.maintenance) searchStatus.textContent = "Search is paused for profile maintenance. Refresh for current availability.";
+  else if (policy.state !== "ready") searchStatus.textContent = policy.state === "unavailable"
     ? "Search is temporarily unavailable. Your library remains available."
     : "Text search is not configured.";
+  else if (!searchResults.hasChildNodes()) searchStatus.textContent = "";
 }
 
 function stateLabel(state: DeckState): string {
@@ -93,8 +96,10 @@ function stateLabel(state: DeckState): string {
 }
 
 async function renderDecks(force = false): Promise<void> {
-  if (client === null) return;
-  const [decks, deletions] = await Promise.all([client.decks(), client.deletions()]);
+  const connected = client;
+  if (connected === null) return;
+  const [decks, deletions] = await Promise.all([connected.decks(), connected.deletions()]);
+  if (connected !== client) return;
   const pendingDeletions = deletions.filter((deletion) => deletion.state === "deleting");
   cleanup.hidden = pendingDeletions.length === 0;
   deletionList.replaceChildren(...pendingDeletions.map((deletion) => {
@@ -172,13 +177,19 @@ async function renderDecks(force = false): Promise<void> {
       if (deck.state === "extracted" && deck.generation_id !== null) {
         article.append(actionButton("Reprocess deck", async () => {
           await client?.act(deck.deck_id, "reprocess");
+          resetSearch();
+          searchStatus.textContent = "Search again for current results.";
           await renderDecks(true);
         }, "button button-quiet"));
       }
       article.append(actionButton("Delete deck", async () => {
         if (!window.confirm(`Delete ${deck.filename} and its extracted files?`)) return;
         const accepted = await client?.remove(deck.deck_id);
-        if (accepted) void followDeletion(accepted).catch(reportError);
+        if (accepted) {
+          resetSearch();
+          searchStatus.textContent = "Search again for current results.";
+          void followDeletion(accepted).catch(reportError);
+        }
         showStatus("Deck removed from the active library. Cleanup will finish in the background.");
         await renderDecks(true);
       }, "button button-danger"));
@@ -221,7 +232,8 @@ function updateExistingDecks(decks: Deck[]): boolean {
 
 function scheduleRefresh(decks: Deck[], pendingDeletions: number): void {
   window.clearTimeout(refreshTimer);
-  if (pendingDeletions > 0 || decks.some((deck) => deck.state === "queued" || deck.state === "processing")) {
+  if (pendingDeletions > 0 || decks.some((deck) => deck.state === "queued" || deck.state === "processing"
+      || deck.search?.state === "queued" || deck.search?.state === "processing")) {
     refreshTimer = window.setTimeout(() => void renderDecks().catch(reportError), 1500);
   }
 }
@@ -279,19 +291,29 @@ connectForm.addEventListener("submit", async (event) => {
 });
 
 retryConnection.addEventListener("click", () => void loadSession());
+function endSession(message: string, kind: "info" | "error" = "info"): void {
+  window.clearTimeout(refreshTimer);
+  resetSearch();
+  gallery?.close();
+  gallery = null;
+  searchStatus.textContent = "";
+  deckList.replaceChildren();
+  library.hidden = true;
+  client = null;
+  connectForm.hidden = false;
+  tokenInput.focus();
+  showStatus(message, kind);
+}
+
 signOutButton.addEventListener("click", async () => {
   try { if (client) await client.request("/auth/logout", { method: "POST" }); }
   catch (error) { reportError(error); return; }
-  window.clearTimeout(refreshTimer); gallery?.close(); gallery = null;
-  for (const url of searchImageUrls) URL.revokeObjectURL(url);
-  searchImageUrls.clear(); searchResults.replaceChildren(); deckList.replaceChildren();
-  library.hidden = true; client = null; connectForm.hidden = false; showStatus("Signed out.");
+  endSession("Signed out.");
 });
-window.addEventListener("library-session-expired", () => {
-  window.clearTimeout(refreshTimer); searchController?.abort(); gallery?.close(); gallery = null;
-  for (const url of searchImageUrls) URL.revokeObjectURL(url);
-  searchImageUrls.clear(); searchResults.replaceChildren(); deckList.replaceChildren();
-  library.hidden = true; client = null; connectForm.hidden = false; showStatus("Your session expired. Sign in again.", "error");
+window.addEventListener("library-session-expired", (event) => {
+  if (event instanceof CustomEvent && event.detail === client) {
+    endSession("Your session expired. Sign in again.", "error");
+  }
 });
 
 uploadForm.addEventListener("submit", async (event) => {
@@ -329,6 +351,14 @@ function clearSearchResults(): void {
   searchResults.replaceChildren();
 }
 
+function resetSearch(): void {
+  searchController?.abort();
+  searchController = null;
+  searchSequence += 1;
+  searchOffset = null;
+  clearSearchResults();
+}
+
 function renderMatch(group: SearchGroup, match: SearchMatch, sequence: number): HTMLElement {
   const article = el("article", "search-match card");
   const preview = el("div", "search-preview");
@@ -338,14 +368,25 @@ function renderMatch(group: SearchGroup, match: SearchMatch, sequence: number): 
   details.append(el("p", "search-snippet", match.snippet));
   for (const warning of match.warning_metadata) details.append(el("p", "warning", warning.message));
   const open = actionButton(`Open slide ${match.slide_number}`, async (button) => {
-    if (!client) return;
-    const current = await client.deck(group.deck_id);
+    const connected = client;
+    if (!connected) return;
+    let current: Deck;
+    try {
+      current = await connected.deck(group.deck_id);
+    } catch (error) {
+      if (sequence !== searchSequence) return;
+      resetSearch();
+      searchStatus.textContent = "This slide could not be opened. Search again to refresh the results.";
+      throw error;
+    }
+    if (sequence !== searchSequence) return;
     if (current.generation_id !== match.generation_id || current.search?.index_revision !== match.index_revision || current.search?.state !== "ready") {
+      resetSearch();
       searchStatus.textContent = "This search result changed while you were browsing. Search again for the current slide.";
       return;
     }
     gallery?.close();
-    gallery = openGallery({ client, deck: current, opener: button, libraryPage, initialSlide: match.slide_number,
+    gallery = openGallery({ client: connected, deck: current, opener: button, libraryPage, initialSlide: match.slide_number,
       onClose: () => { gallery = null; if (!button.isConnected) refreshButton.focus({ preventScroll: true }); } });
   }, "button button-quiet");
   details.append(open);
@@ -367,25 +408,43 @@ function renderMatch(group: SearchGroup, match: SearchMatch, sequence: number): 
   return article;
 }
 
-function renderSearchGroups(groups: SearchGroup[], sequence: number, append = false): void {
+function renderSearchGroups(groups: SearchGroup[], query: string, sequence: number, append = false): void {
   if (!append) clearSearchResults();
   for (const group of groups) {
     const section = el("section", "search-deck-group");
     section.append(el("h3", "search-deck-title", group.filename));
+    section.append(actionButton("Download original deck",
+      () => client?.download(`/v1/decks/${group.deck_id}/original`, group.filename), "button button-quiet"));
     for (const match of group.matches) section.append(renderMatch(group, match, sequence));
-    if (group.has_more_matches && group.matches.length) {
-      let matchOffset = group.matches.length;
+    const best = group.matches[0];
+    if (group.has_more_matches && best) {
+      let matchOffset = 0;
+      const shownSlides = new Set(group.matches.map((match) => match.slide_number));
       const more = actionButton(`More matches in ${group.filename}`, async (button) => {
         if (!client) return;
         button.disabled = true;
-        const response = await client.search(searchInput.value, { deckId: group.deck_id, limit: 20,
-          offset: matchOffset, ...(searchController ? { signal: searchController.signal } : {}) });
-        if (sequence !== searchSequence) return;
-        const additional = response.decks[0]?.matches ?? [];
-        for (const match of additional) section.insertBefore(renderMatch(group, match, sequence), button);
-        matchOffset += additional.length;
-        if (!response.decks[0]?.has_more_matches) button.remove();
-        else button.disabled = false;
+        try {
+          const response = await client.search(query, { deckId: group.deck_id, limit: 20,
+            offset: matchOffset, ...(searchController ? { signal: searchController.signal } : {}) });
+          if (sequence !== searchSequence) return;
+          const additional = response.decks[0]?.matches ?? [];
+          if (additional.some((match) => match.generation_id !== best.generation_id || match.index_revision !== best.index_revision)) {
+            resetSearch();
+            searchStatus.textContent = "This deck changed while you were browsing. Search again for current results.";
+            return;
+          }
+          for (const match of additional) {
+            if (shownSlides.has(match.slide_number)) continue;
+            shownSlides.add(match.slide_number);
+            section.insertBefore(renderMatch(group, match, sequence), button);
+          }
+          matchOffset = response.next_offset ?? matchOffset + additional.length;
+          if (!response.decks[0]?.has_more_matches && response.next_offset === null) button.remove();
+        } catch (error) {
+          if (sequence === searchSequence) throw error;
+        } finally {
+          button.disabled = false;
+        }
       }, "button button-small");
       section.append(more);
     }
@@ -394,13 +453,10 @@ function renderSearchGroups(groups: SearchGroup[], sequence: number, append = fa
 }
 
 async function submitSearch(query: string, offset = 0, append = false): Promise<void> {
-  if (!client || searchPolicy?.state !== "ready") return;
+  if (!client || searchPolicy?.state !== "ready" || searchPolicy.maintenance) return;
   if (!append) {
-    searchController?.abort();
+    resetSearch();
     searchController = new AbortController();
-    searchSequence += 1;
-    searchOffset = null;
-    clearSearchResults();
   }
   const sequence = searchSequence;
   searchStatus.textContent = "Searching indexed slides…";
@@ -411,10 +467,17 @@ async function submitSearch(query: string, offset = 0, append = false): Promise<
     const notes = result.warnings.map((warning) => warning.message);
     if (result.mode === "lexical") notes.unshift("Semantic matching is unavailable. These results use slide text only; cross-language and meaning-based matches may be missing.");
     searchStatus.textContent = [result.degraded ? "Search is degraded." : "", ...notes,
-      `${result.coverage.eligible_slides ?? 0} visible slides are eligible; ${result.coverage.blank_slides ?? 0} are blank and ${result.coverage.hidden_slides ?? 0} are hidden.`].filter(Boolean).join(" ");
+      `${result.coverage.searchable_slides ?? 0} of ${result.coverage.eligible_slides ?? 0} visible slides are searchable. ${result.coverage.blank_slides ?? 0} are blank and ${result.coverage.hidden_slides ?? 0} are hidden.`].filter(Boolean).join(" ");
     if (!result.decks.length && result.mode === "lexical") searchResults.append(el("p", "empty-state card", "No lexical matches were found. Semantic matching is currently unavailable."));
-    else if (!result.decks.length) searchResults.append(el("p", "empty-state card", "No matching slides were found in the indexed library."));
-    else renderSearchGroups(result.decks, sequence, append);
+    else if (!result.decks.length) {
+      const pending = deckList.querySelector('[data-state="queued"],[data-state="processing"],[data-search-state="queued"],[data-search-state="processing"]');
+      const empty = pending ? "Indexing is still in progress. Try again after the decks are ready."
+        : !deckList.querySelector(".deck-card") ? "The library is empty. Upload a deck to start searching."
+        : !result.coverage.searchable_slides ? "The library has no searchable slide text or speaker notes yet."
+        : "No matching slides were found in the indexed library.";
+      searchResults.append(el("p", "empty-state card", empty));
+    }
+    else renderSearchGroups(result.decks, query, sequence, append);
     searchResults.querySelector(".more-decks")?.remove();
     if (searchOffset !== null) searchResults.append(actionButton("More matching decks", () => submitSearch(query, searchOffset ?? 0, true), "button button-quiet more-decks"));
   } catch (error) {

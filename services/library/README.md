@@ -1,6 +1,6 @@
 # PowerPoint library service
 
-This independently startable Python service owns canonical uploaded decks and durable extraction operations. It sends exact original bytes to the extraction service over authenticated HTTP. It publishes complete manifest snapshots and proxies graphic downloads through the library authorization boundary. Completed processing is labelled `extracted`. Search indexing is a later feature.
+This independently startable Python service owns canonical uploaded decks, durable extraction operations, and search indexing requests. It sends exact original bytes to the extraction service over authenticated HTTP. It publishes complete manifest snapshots, proxies graphic downloads, and validates search results against the published generations.
 
 ## Install and start
 
@@ -35,13 +35,33 @@ uv run python -m library_service
 
 The service listens on `127.0.0.1:8000`. `LIBRARY_HOST` and `LIBRARY_PORT` change that listener. `LIBRARY_INCLUDE_NOTES` controls speaker-note extraction and defaults to `true`; set it to `false` to exclude notes. The authenticated `GET /v1/policy` route reports the active value. The frontend shows the policy before upload. The library captures it when it accepts an upload or reprocess operation, and retries keep that captured value.
 
-Text search is optional. Configure both `LIBRARY_SEARCH_URL` and `LIBRARY_SEARCH_TOKEN` after independently starting and migrating `services/search/`. The library persists each bounded text snapshot with its extraction publication, submits it with a stable key, and polls status. Search failure does not block uploads or gallery use. A deck is shown as searchable only after the complete build is ready. Deletion sends the search fence and waits for search, extraction, and original cleanup. The library is the only HTTP service the browser calls.
+Text search is optional. Configure both `LIBRARY_SEARCH_URL` and `LIBRARY_SEARCH_TOKEN` after independently starting and migrating `services/search/`. The library persists each bounded text snapshot with its extraction publication, submits it with a stable key, and polls status. Uploads and the gallery remain available during search outages. A deck becomes searchable when its complete build is ready. Deletion sends the search fence and waits for search, extraction, and original cleanup. The browser accesses the library through the web gateway.
 
 Retryable indexing failures show **Retry search indexing** on the deck. This reuses the search job's durable input snapshot and does not rerun PowerPoint extraction. Configuration and model errors remain failed until corrected or the deck is reprocessed under the active profile.
 
 The library can start when extraction is unavailable. Accepted work remains durable and temporary network failures retry with bounded backoff. After five consecutive processing failures, status becomes `failed` with an actionable retry. A full extraction queue keeps accepted work queued with capped backoff. Deletion continues retrying until both local and extraction cleanup complete.
 
 Stored operations created before notes-policy capture have no recorded policy. The library submits those unfinished operations with notes excluded, which preserves their pre-feature behavior. Retrying one of these operations keeps notes excluded. Use reprocess to apply the current policy.
+
+## Backfill and rebuild search
+
+Set `LIBRARY_SEARCH_BACKFILL=true` and restart the library to queue previously published manifests that have no indexing intent. It defaults to `false`. Backfill reuses the saved native text and included notes, preserves unknown notes on older manifests, and resumes queued work after restart. Existing decks keep their source revision and skip rendering. Before enabling backfill with a cloud provider, review the processing disclosure because historical text and included notes will be sent to the configured model.
+
+For a change to the embedding profile, configure the target in the [search service](../search/README.md#configure-and-run). Set `LIBRARY_SEARCH_ADMIN_TOKEN` to a new, separate secret of at least 32 printable ASCII characters without spaces. Keep it in the operator's protected environment and use it with the library bearer credential from a trusted local client. Starting the rebuild pauses queries until the current corpus has settled under the target profile. Upload and gallery operations remain available. The current search database uses a fixed embedding dimension. Follow the search service's guidance if the target dimensions differ.
+
+From a PowerShell session with both credentials in the environment and the local Library URL set in `LIBRARY_URL`:
+
+```powershell
+$headers = @{
+    Authorization = "Bearer $env:LIBRARY_TOKEN"
+    'X-Search-Admin-Token' = $env:LIBRARY_SEARCH_ADMIN_TOKEN
+    'Idempotency-Key' = (New-Guid).Guid
+}
+$rebuild = Invoke-RestMethod -Method Post -Uri "$env:LIBRARY_URL/v1/search/reindex" -Headers $headers
+Invoke-RestMethod -Uri "$env:LIBRARY_URL/v1/search/reindex/$($rebuild.operation_id)" -Headers $headers
+```
+
+Keep the same key if the start response is lost. Poll the returned ID until the state is `complete`. For failures, inspect the deck's search status and retry a retryable job. To explicitly omit a failed revision, send an empty `PUT` to `/v1/search/reindex/{operation_id}/excluded/{deck_id}` using the same authentication headers. An omitted revision stays out of search. Reprocess the deck after correcting the cause to publish a new revision. See the [API contract](API.md#search-profile-rebuilds) for states and response fields.
 
 ## Use PostgreSQL
 
@@ -112,19 +132,22 @@ uv run --locked pytest -q
 uv run --locked mypy src
 uv run --locked ruff check src tests
 uv run --locked python scripts/check_database_workflow.py --self-check
+uv run --locked python scripts/check_search_workflow.py --self-check
 ```
 
 These checks exercise the actual HTTP adapter against a deterministic extraction contract, interruption recovery, lost retry responses, supersession, deletion during downloads, replay of unknown-UUID deletion fences, authentication before body reads, manifest validation, and original checksums. They do not establish renderer fidelity, platform acceptance, or the initial 100-deck performance target. The complete live workflow also needs the extraction service and `frontend/`.
+
+With the library, extraction, and search listeners ready, set `LIBRARY_TOKEN` in the environment and run `uv run --locked python scripts/check_search_workflow.py --base-url http://127.0.0.1:8500`. Adjust the loopback port for your deployment. The script uploads a synthetic deck, waits for indexing, validates the exact slide and preview and original checksums, reprocesses the deck, then deletes it and checks that it disappears from search. Pass `--real-endpoint` to permit synthetic text to reach a configured cloud model. Add `--capacity` for 100 sequential 20-slide synthetic uploads retained until cleanup. The timing report describes this workload on the current services. A baseline comparison and GPU measurements are separate checks.
 
 Default guardrails are 64 MiB per original and asset, 65 MiB per complete incoming request, 8 MiB per extraction JSON response, a 30-second incoming-body deadline, a 15-second outbound request timeout, and one-second job polling. They are guardrails, not measured capacity or latency promises. `Settings` supplies these values for deployments that need different limits.
 
 ## Back up and restore
 
-Stop the library and extraction services before taking a consistent local snapshot. Back up the complete library data directory, including `metadata.sqlite3`, `originals/`, and the operation and deletion records in metadata. Back up extraction's complete service-owned data directory separately. Export `GET /v1/deletions` to a separate protected backup location before stopping the services. Do not copy only originals or only manifests. The two services' pending operations and deletion fences are required to resume safely.
+Export `GET /v1/deletions` to a separate protected backup location before stopping the services. Stop the library, extraction, and configured search service before taking a coordinated snapshot. Back up the complete library data directory, including `library.json`, `originals/`, and `search-reindex/` if present. Include `metadata.sqlite3` for SQLite or a consistent database backup for PostgreSQL metadata. Back up extraction's complete service-owned directory and the separate [search database](../search/README.md#data-and-recovery). These snapshots preserve the operation records, pending search jobs, and deletion fences needed for recovery.
 
 Retain the newest deletion identities separately from older content snapshots. Compare their `updated_at` values with the snapshot time. A backup policy must preserve deletion records created after a content backup. Backup copies can retain deleted content until the administrator's documented retention period expires. Active-library deletion does not promise immediate deletion from backups.
 
-To restore, stop both services and preserve their current data directories before replacing them. Restore both snapshots. Start the services on loopback without reconnecting the frontend. Replay every deletion UUID recorded after the snapshot through the authenticated library `DELETE /v1/decks/{deck_id}` route. Wait for each deletion status to become `deleted`. Repeated deletion is safe. The library resumes pending extraction and cleanup operations at startup. Reconnect the frontend only after the newest deletion fences and pending cleanup have converged. If the newest deletion export is unavailable, an older backup cannot safely be exposed as the active library.
+To restore, stop the participating services and preserve the current roots and databases before restoring the coordinated snapshots. Restore search into a separate database and bind it to the recovered library. Start the recovered services privately on loopback with the web gateway disconnected. Replay each deletion UUID recorded after the snapshot through the authenticated library `DELETE /v1/decks/{deck_id}` route, then poll until every deletion is `deleted`. The library resumes pending extraction, search, and cleanup at startup. Before reconnecting the gateway, verify the current-generation downloads and the absence of deleted content in both lexical and hybrid search. If the newest deletion export is unavailable, keep the restored library private.
 
 The library's canonical copy remains until deletion is fenced locally. The cleanup worker removes it before waiting for extraction, even during an extraction outage. Extraction retains a private work copy for retries and all derived assets until its deletion completes. There is no third copy of derivatives in the library. Retired extraction generations can make an older open preview unavailable, so clients must refresh the whole manifest after a generation change.
 

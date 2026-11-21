@@ -95,11 +95,16 @@
       integration.style.cssText = "position:fixed;left:-10000px;width:1000px;height:800px";
       const deckId = "11111111-1111-4111-8111-111111111111";
       let decks = [{ ...deck, deck_id: deckId, generation_id: "first", byte_length: 42, source_revision: 1, warnings: [] }];
-      integration.fixtureClient = { ...client, decks: async () => decks, deletions: async () => [] };
+      integration.fixtureClient = { ...client, decks: async () => decks, deletions: async () => [],
+        uploadPolicy: async () => ({ include_notes: true, search: { state: "not_configured", disclosure: "" } }) };
       const page = await (await fetch("/")).text();
       integration.srcdoc = page.replace('<script type="module" src="/src/main.ts"></scr' + 'ipt>', `<script type="module">
         import { LibraryClient } from "/src/client.ts";
         Object.assign(LibraryClient.prototype, window.frameElement.fixtureClient);
+        window.fetch = async (path) => {
+          if (path === "/auth/session") return Response.json({ authenticated: true, csrf_token: "fixture-csrf" });
+          throw new Error("Unexpected gallery fixture request: " + path);
+        };
         await import("/src/main.ts");
         window.frameElement.dataset.ready = "true";
       </scr` + `ipt>`);
@@ -114,9 +119,7 @@
       try {
         await waitFor(() => integration.dataset.ready === "true", "The library integration fixture starts.");
         const page = integration.contentDocument;
-        page.querySelector("#token").value = "fixture-token-".repeat(4);
-        page.querySelector("#connect-form").dispatchEvent(new Event("submit", { cancelable: true }));
-        await waitFor(() => page.querySelector("[data-gallery-deck]"), "Connecting loads the deck list.");
+        await waitFor(() => page.querySelector("[data-gallery-deck]"), "The existing session loads the deck list.");
         page.querySelector("[data-gallery-deck]").click();
         await waitFor(() => page.querySelector(".gallery .slide-card"), "The deck action opens its gallery.");
         decks = [{ ...decks[0], generation_id: "second" }];

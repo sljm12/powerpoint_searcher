@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 
 
 class Record(BaseModel):
@@ -266,6 +266,15 @@ class SearchPolicy(Record):
     model: str | None = None
     location: str | None = None
     disclosure: str
+    maintenance: bool = False
+
+
+class SearchReindex(Record):
+    operation_id: UUID
+    profile_id: str
+    state: Literal["queued", "building", "complete"] = "queued"
+    excluded: dict[UUID, int] = Field(default_factory=dict)
+    error: ErrorDetail | None = None
 
 
 class UploadPolicy(Record):
@@ -314,6 +323,13 @@ class SearchQuery(Record):
     deck_id: UUID | None = None
     limit: int = Field(default=20, ge=1, le=100, strict=True)
     offset: int = Field(default=0, ge=0, le=10000, strict=True)
+
+    @field_validator("query")
+    @classmethod
+    def query_is_nonblank(cls, query: str) -> str:
+        if not query.strip():
+            raise ValueError("Search query cannot be blank")
+        return query
 
 
 class Deck(Record):

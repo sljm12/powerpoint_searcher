@@ -11,6 +11,9 @@ Content routes require `Authorization: Bearer <LIBRARY_TOKEN>`. `/health` is pub
 | `GET /v1/deletions` | None | 200 minimal deletion fence records, newest first |
 | `GET /v1/decks/{deck_id}` | None | 200 `Deck`, including deletion state |
 | `POST /v1/search` | JSON `{query, deck_id?, limit?, offset?}` | 200 ranked current-generation slide groups |
+| `POST /v1/search/reindex` | Empty body, `Idempotency-Key`, and `X-Search-Admin-Token` | 202 durable `SearchReindex` for the configured profile |
+| `GET /v1/search/reindex/{operation_id}` | `X-Search-Admin-Token` | 200 `SearchReindex` status |
+| `PUT /v1/search/reindex/{operation_id}/excluded/{deck_id}` | Empty body and `X-Search-Admin-Token` | 200 `SearchReindex` with the failed deck revision recorded |
 | `POST /v1/decks/{deck_id}/search/retry` | Empty body and `Idempotency-Key` | 200 durable search retry status, when the failed job is retryable |
 | `GET /v1/operations/{operation_id}` | None | 200 stable `Operation` record |
 | `POST /v1/decks/{deck_id}/retry` | Empty body; `Idempotency-Key` header | 202 `Accepted` |
@@ -33,11 +36,19 @@ States are `queued`, `processing`, `extracted`, `failed`, `deleting`, and `delet
 
 `Operation` contains `operation_id`, `deck_id`, `kind` of `extract`, `retry`, or `delete`, `state` of `pending`, `processing`, `succeeded`, `failed`, or `cancelled`, `phase`, `source_revision`, progress counts, `stage`, `error`, `warnings`, timestamps, and its `status_url`. Previously accepted operation IDs remain observable after supersession.
 
-`GET /v1/policy` reports the authenticated deployment-wide `LIBRARY_INCLUDE_NOTES` setting and sanitized text-search policy. Search configuration uses `LIBRARY_SEARCH_URL` and `LIBRARY_SEARCH_TOKEN`; both must be configured. The search token stays in the library process. The disclosure identifies the selected model and processing location and explains which text leaves the library. Uploads and reprocessing capture the notes setting when accepted. Retrying an operation keeps its captured value. The frontend reads this route before upload and search.
+`GET /v1/policy` reports the authenticated deployment-wide `LIBRARY_INCLUDE_NOTES` setting and sanitized text-search policy. Search configuration requires both `LIBRARY_SEARCH_URL` and `LIBRARY_SEARCH_TOKEN`. The search token stays in the library process. The policy identifies the selected model and processing location, explains which text leaves the library, and reports `search.maintenance` when the configured profile is waiting for activation or a rebuild is running. Uploads and reprocessing capture the notes setting when accepted. Retrying an operation keeps its captured value. The frontend reads this route before upload and search.
 
-`POST /v1/search` accepts query text in the JSON body, an optional `deck_id`, a `limit` from 1 to 100, and a nonnegative `offset`. It returns only results whose deck is extracted and whose generation, revision, and profile still match current library metadata. The library creates preview routes from the live manifest; remote asset URLs are never trusted. A query is not written to browser storage or placed in a URL.
+`POST /v1/search` accepts query text in the JSON body, an optional `deck_id`, a `limit` from 1 to 100, and a nonnegative `offset`. Each result must match a published manifest, the current index revision, and the active profile. The library creates preview routes from the published manifest. During profile maintenance this route returns retryable HTTP 503 with code `reindex_required`. The browser keeps query text in memory and sends it in the request body.
 
 Retry accepts only the current failed operation with `error.retryable=true`. It preserves the revision. A failed extraction job uses extraction's keyed retry endpoint. A transport failure resumes the same recorded submission or polling request, so an uncertain response cannot duplicate attempts. Reprocessing increments the revision and submits the same immutable original with a new stable request key. Both operations retain the previous complete generation until a replacement is validated.
+
+## Search profile rebuilds
+
+All three rebuild routes require the library bearer credential and a separate `X-Search-Admin-Token` matching `LIBRARY_SEARCH_ADMIN_TOKEN`. Configure that token only for operators. The regular library credential by itself receives HTTP 403. The search service determines the target profile from its configuration. The start request accepts an empty body.
+
+`SearchReindex` contains the UUID `operation_id`, target `profile_id`, `state`, an `excluded` object mapping deck UUIDs to their failed index revisions, and a nullable sanitized `error`. The states are `queued` while the library is waiting to begin the rebuild at the search service, `building` while it prepares and verifies current deck revisions, and `complete` after activation. The same idempotency key and target profile return the original operation. A conflicting key or another active rebuild returns 409. Poll the operation and individual deck statuses for progress.
+
+Retry a retryable failed job through the deck's search retry route. An operator can explicitly exclude a failed job for the target profile while the rebuild is building. An exclusion applies to that index revision. A replacement manifest with a newer index revision must be reconciled separately. The library waits for current published manifests and pending search deletions before completing the rebuild. It resumes unfinished operations after restart.
 
 ## Manifests and downloads
 
@@ -69,6 +80,7 @@ Errors have this shape:
 | --- | --- |
 | 400 | Malformed UUID, key, fields, filename, query, body, or body timeout |
 | 401 | Missing or incorrect library token |
+| 403 | Missing or incorrect search administrator credential |
 | 404 | Unknown deck, operation, asset, manifest, or generation |
 | 409 | Conflicting request key, invalid retry, revision limit, or stale upstream asset |
 | 410 | Deleted deck identity |

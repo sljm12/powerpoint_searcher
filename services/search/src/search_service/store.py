@@ -14,8 +14,9 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from .models import (DeckMatches, IndexRequest, JobAccepted, JobError, JobStatus, Match, SearchRequest,
-                     SearchResponse, WarningDetail)
+from .models import (DeckMatches, IndexRequest, JobAccepted, JobError, JobStatus, Match,
+                     ReindexActivation, ReindexRequest, ReindexStatus, SearchRequest, SearchResponse,
+                     WarningDetail)
 from .settings import Settings
 
 
@@ -43,8 +44,12 @@ class SearchStore:
             connect_timeout=self.settings.database_connect_timeout,
             row_factory=dict_row,
         )
-        if self.settings.embedding_dimensions:
-            self.migrate() if migrate else self.check_schema()
+        try:
+            if self.settings.embedding_dimensions:
+                self.migrate() if migrate else self.check_schema()
+        except BaseException:
+            self.close()
+            raise
 
     def close(self) -> None:
         with self.lock:
@@ -103,6 +108,7 @@ class SearchStore:
                 "__VECTOR_DIMENSIONS__", str(self.settings.embedding_dimensions)
             )
             connection.execute(sql, prepare=False)
+            connection.execute(sql_path.with_name("002.sql").read_text(encoding="utf-8"), prepare=False)
             connection.execute("UPDATE search.service_state SET embedding_dimensions=%s "
                                "WHERE id=1 AND embedding_dimensions=0",
                                (self.settings.embedding_dimensions,))
@@ -112,19 +118,16 @@ class SearchStore:
         with self.connection() as connection:
             extension = connection.execute("SELECT extversion FROM pg_extension WHERE extname='vector'").fetchone()
             if not extension:
-                raise RuntimeError("Install the pgvector extension in the search database before startup")
+                raise SearchError(503, "vector_extension_missing", "Install the pgvector extension in the search database.")
             schema = connection.execute("SELECT to_regnamespace('search') AS schema").fetchone()
             if not schema or schema["schema"] is None:
-                raise RuntimeError("Run the search-owned migrations before startup")
+                raise SearchError(503, "search_schema_unavailable", "Run the search-owned migrations before startup.")
             version = connection.execute("SELECT version FROM search.schema_version WHERE id=1").fetchone()
-            if version is None or version["version"] != 2:
-                raise RuntimeError("Search database schema version is unsupported")
+            if version is None or version["version"] != 3:
+                raise SearchError(503, "search_schema_unavailable", "Run the search-owned migrations before startup.")
             profile_table = connection.execute("SELECT to_regclass('search.profiles') AS profile_table").fetchone()
             if profile_table is None or profile_table["profile_table"] is None:
-                raise RuntimeError("Search profile registry is missing; run the search-owned migration")
-            state = connection.execute("SELECT embedding_dimensions FROM search.service_state WHERE id=1").fetchone()
-            if state is None or state["embedding_dimensions"] != self.settings.embedding_dimensions:
-                raise RuntimeError("Embedding dimension changed; run the documented profile migration")
+                raise SearchError(503, "search_schema_unavailable", "The search profile registry is missing.")
 
     def health(self) -> tuple[bool, str | None]:
         if self.db is None:
@@ -151,12 +154,14 @@ class SearchStore:
                 (request.library_id, request.deck_id),
             )
             row = connection.execute(
-                "SELECT requested_revision, deleted FROM search.decks "
+                "SELECT requested_revision,deleted,excluded_revision FROM search.decks "
                 "WHERE library_id=%s AND deck_id=%s FOR UPDATE",
                 (request.library_id, request.deck_id),
             ).fetchone()
             if row and row["deleted"]:
                 raise SearchError(410, "deck_deleted", "This deck has a permanent deletion fence.")
+            if row and row["excluded_revision"] is not None and request.index_revision <= row["excluded_revision"]:
+                raise SearchError(409, "stale_revision", "This revision was excluded from a profile rebuild.")
             existing = connection.execute(
                 "SELECT id, payload_sha256, state FROM search.jobs WHERE idempotency_key=%s FOR UPDATE",
                 (key,),
@@ -180,15 +185,16 @@ class SearchStore:
                     return JobAccepted(job_id=same_revision["id"], state=same_revision["state"],
                                        status_url=f"/v1/index-jobs/{same_revision['id']}")
             service = connection.execute(
-                "SELECT library_id, active_profile, maintenance FROM search.service_state WHERE id=1 FOR UPDATE"
+                "SELECT library_id,active_profile,maintenance,target_profile "
+                "FROM search.service_state WHERE id=1 FOR UPDATE"
             ).fetchone()
             if service is None:
                 raise SearchError(503, "search_unconfigured", "Search is not configured.")
             if service["library_id"] and service["library_id"] != request.library_id:
                 raise SearchError(409, "library_conflict", "This search database is bound to another library.")
-            if service["maintenance"]:
+            active_profile = service["target_profile"] if service["maintenance"] else service["active_profile"]
+            if service["maintenance"] and active_profile != request.profile_id:
                 raise SearchError(503, "reindex_required", "Search is paused for profile maintenance.")
-            active_profile = service["active_profile"]
             if active_profile and active_profile != request.profile_id:
                 raise SearchError(409, "reindex_required", "A profile change requires a full reindex.")
             profile = connection.execute("SELECT 1 FROM search.profiles WHERE profile_id=%s", (request.profile_id,)).fetchone()
@@ -196,8 +202,10 @@ class SearchStore:
                 raise SearchError(409, "profile_conflict", "Index profile is not registered by this service.")
             connection.execute(
                 "UPDATE search.service_state SET library_id=COALESCE(library_id,%s), "
-                "active_profile=COALESCE(active_profile,%s) WHERE id=1",
-                (request.library_id, request.profile_id),
+                "active_profile=CASE WHEN maintenance THEN active_profile ELSE COALESCE(active_profile,%s) END, "
+                "embedding_dimensions=CASE WHEN maintenance THEN embedding_dimensions ELSE "
+                "(SELECT dimensions FROM search.profiles WHERE profile_id=%s) END WHERE id=1",
+                (request.library_id, request.profile_id, request.profile_id),
             )
             connection.execute(
                 "INSERT INTO search.decks (library_id,deck_id,requested_revision,deleted) "
@@ -209,9 +217,10 @@ class SearchStore:
                  eligible, searchable, blank, hidden),
             )
             connection.execute(
-                "UPDATE search.jobs SET state='cancelled', payload=NULL, updated_at=now() "
+                "UPDATE search.jobs SET state=CASE WHEN state IN ('queued','processing') THEN 'cancelled' ELSE state END,"
+                "payload=NULL, updated_at=now() "
                 "WHERE library_id=%s AND deck_id=%s AND index_revision<%s "
-                "AND state IN ('queued','processing')",
+                "AND payload IS NOT NULL",
                 (request.library_id, request.deck_id, request.index_revision),
             )
             connection.execute(
@@ -241,10 +250,118 @@ class SearchStore:
             error=JobError.model_validate(row["error"]) if row["error"] else None,
         )
 
-    def library_id(self) -> UUID | None:
-        with self.connection() as connection:
-            row = connection.execute("SELECT library_id FROM search.service_state WHERE id=1").fetchone()
-        return row["library_id"] if row else None
+    def profile_state(self, *, deadline: float | None = None) -> tuple[UUID | None, str | None, bool]:
+        try:
+            with self.connection(deadline=deadline) as connection, connection.transaction():
+                if deadline is not None:
+                    remaining = max(1, int((deadline - time.monotonic()) * 1000))
+                    connection.execute("SELECT set_config('statement_timeout', %s, true)", (f"{remaining}ms",))
+                row = connection.execute(
+                    "SELECT library_id,active_profile,maintenance FROM search.service_state WHERE id=1"
+                ).fetchone()
+            if row is None:
+                raise SearchError(503, "search_unconfigured", "Search is not configured.")
+            return row["library_id"], row["active_profile"], bool(row["maintenance"])
+        except psycopg.errors.QueryCanceled:
+            if deadline is not None and time.monotonic() >= deadline:
+                raise SearchError(504, "search_timeout", "Search exceeded its configured response deadline. Try again.", True) from None
+            raise SearchError(503, "storage_unavailable", "Search database could not check profile status.", True) from None
+        except psycopg.Error:
+            raise SearchError(503, "storage_unavailable", "Search database could not check profile status.", True) from None
+
+    def begin_reindex(self, request: ReindexRequest) -> ReindexStatus:
+        with self.connection() as connection, connection.transaction():
+            state = connection.execute("SELECT * FROM search.service_state WHERE id=1 FOR UPDATE").fetchone()
+            if state is None or state["library_id"] not in (None, request.library_id):
+                raise SearchError(409, "library_conflict", "Search is bound to another library.")
+            existing = self._reindex_record(connection, request)
+            if existing is not None:
+                return existing
+            if state["maintenance"]:
+                raise SearchError(409, "reindex_in_progress", "A search profile rebuild is already in progress.")
+            connection.execute(
+                "UPDATE search.service_state SET library_id=%s, reindex_id=%s, "
+                "target_profile=%s, maintenance=TRUE WHERE id=1",
+                (request.library_id, request.operation_id, request.profile_id),
+            )
+            connection.execute(
+                "INSERT INTO search.reindexes (id,library_id,profile_id) VALUES (%s,%s,%s)",
+                (request.operation_id, request.library_id, request.profile_id),
+            )
+            connection.execute(
+                "UPDATE search.jobs SET state=CASE WHEN state IN ('queued','processing') THEN 'cancelled' ELSE state END,"
+                "payload=NULL,updated_at=now() WHERE library_id=%s AND profile_id<>%s AND payload IS NOT NULL",
+                (request.library_id, request.profile_id),
+            )
+        return ReindexStatus(**request.model_dump(), state="building")
+
+    @staticmethod
+    def _reindex_record(connection: psycopg.Connection[dict[str, Any]],
+                        request: ReindexRequest) -> ReindexStatus | None:
+        existing = connection.execute("SELECT * FROM search.reindexes WHERE id=%s",
+                                      (request.operation_id,)).fetchone()
+        if existing is None:
+            return None
+        if existing["library_id"] != request.library_id or existing["profile_id"] != request.profile_id:
+            raise SearchError(409, "reindex_conflict", "Search rebuild identity does not match.")
+        return ReindexStatus(library_id=request.library_id, operation_id=request.operation_id, profile_id=request.profile_id,
+                             state="complete" if existing["completed"] else "building")
+
+    def activate_reindex(self, request: ReindexActivation) -> ReindexStatus:
+        response = ReindexStatus(library_id=request.library_id, operation_id=request.operation_id,
+                                 profile_id=request.profile_id, state="complete")
+        with self.connection() as connection, connection.transaction():
+            state = connection.execute("SELECT * FROM search.service_state WHERE id=1 FOR UPDATE").fetchone()
+            existing = self._reindex_record(connection, request)
+            if existing is not None and existing.state == "complete":
+                return existing
+            if (state is None or state["library_id"] != request.library_id
+                    or state["reindex_id"] != request.operation_id or state["target_profile"] != request.profile_id):
+                raise SearchError(409, "reindex_conflict", "Search rebuild identity does not match.")
+            if not state["maintenance"]:
+                return response
+            rows = connection.execute(
+                "SELECT d.deck_id,d.requested_revision,d.active_revision,d.profile_id,j.state AS job_state "
+                "FROM search.decks d LEFT JOIN search.jobs j ON j.library_id=d.library_id "
+                "AND j.deck_id=d.deck_id AND j.index_revision=d.requested_revision AND j.profile_id=%s "
+                "WHERE d.library_id=%s AND NOT d.deleted",
+                (request.profile_id, request.library_id),
+            ).fetchall()
+            expected = request.ready | request.excluded
+            found = {row["deck_id"] for row in rows}
+            if (request.ready.keys() & request.excluded.keys()
+                    or not request.ready.keys() <= found or not found <= expected.keys()):
+                raise SearchError(409, "reindex_incomplete", "The rebuild cohort does not match the current library.", True)
+            for row in rows:
+                deck_id = row["deck_id"]
+                if deck_id in request.ready:
+                    valid = (row["requested_revision"] == row["active_revision"] == expected[deck_id]
+                             and row["profile_id"] == request.profile_id and row["job_state"] == "ready")
+                else:
+                    valid = (row["requested_revision"] < expected[deck_id]
+                             or (row["requested_revision"] == expected[deck_id] and row["job_state"] == "failed"))
+                if not valid:
+                    raise SearchError(409, "reindex_incomplete", "A requested rebuild has not settled.", True)
+            for deck_id, revision in request.excluded.items():
+                connection.execute(
+                    "INSERT INTO search.decks (library_id,deck_id,requested_revision,excluded_revision) "
+                    "VALUES (%s,%s,%s,%s) ON CONFLICT (library_id,deck_id) DO UPDATE SET "
+                    "requested_revision=EXCLUDED.requested_revision,excluded_revision=EXCLUDED.excluded_revision,"
+                    "active_revision=NULL,active_generation=NULL,profile_id=NULL WHERE NOT search.decks.deleted",
+                    (request.library_id, deck_id, revision, revision),
+                )
+                connection.execute("DELETE FROM search.segments WHERE library_id=%s AND deck_id=%s",
+                                   (request.library_id, deck_id))
+                connection.execute(
+                    "UPDATE search.jobs SET payload=NULL WHERE library_id=%s AND deck_id=%s",
+                    (request.library_id, deck_id),
+                )
+            connection.execute(
+                "UPDATE search.service_state SET active_profile=target_profile,maintenance=FALSE,"
+                "embedding_dimensions=(SELECT dimensions FROM search.profiles WHERE profile_id=target_profile) WHERE id=1"
+            )
+            connection.execute("UPDATE search.reindexes SET completed=TRUE WHERE id=%s", (request.operation_id,))
+        return response
 
     def claim(self) -> dict[str, Any] | None:
         with self.connection() as connection, connection.transaction():
@@ -275,9 +392,13 @@ class SearchStore:
     def save_batch(self, job: dict[str, Any], rows: list[tuple[Any, ...]]) -> bool:
         with self.connection() as connection, connection.transaction():
             deck = connection.execute(
-                "SELECT requested_revision,deleted FROM search.decks WHERE library_id=%s AND deck_id=%s FOR UPDATE",
-                (job["library_id"], job["deck_id"]),
+                "SELECT d.requested_revision,d.deleted,j.state FROM search.decks d JOIN search.jobs j "
+                "ON j.library_id=d.library_id AND j.deck_id=d.deck_id "
+                "WHERE j.id=%s FOR UPDATE OF d",
+                (job["id"],),
             ).fetchone()
+            if deck is not None and deck["state"] != "processing":
+                return False
             if not deck or deck["deleted"] or deck["requested_revision"] != job["index_revision"]:
                 connection.execute("UPDATE search.jobs SET state='cancelled',payload=NULL WHERE id=%s",
                                    (job["id"],))
@@ -303,9 +424,13 @@ class SearchStore:
     def publish(self, job: dict[str, Any], total: int) -> bool:
         with self.connection() as connection, connection.transaction():
             deck = connection.execute(
-                "SELECT requested_revision,deleted FROM search.decks WHERE library_id=%s AND deck_id=%s FOR UPDATE",
-                (job["library_id"], job["deck_id"]),
+                "SELECT d.requested_revision,d.deleted,j.state FROM search.decks d JOIN search.jobs j "
+                "ON j.library_id=d.library_id AND j.deck_id=d.deck_id "
+                "WHERE j.id=%s FOR UPDATE OF d",
+                (job["id"],),
             ).fetchone()
+            if deck is not None and deck["state"] != "processing":
+                return False
             if not deck or deck["deleted"] or deck["requested_revision"] != job["index_revision"]:
                 connection.execute("UPDATE search.jobs SET state='cancelled',payload=NULL WHERE id=%s",
                                    (job["id"],))
@@ -353,15 +478,18 @@ class SearchStore:
             if not row:
                 raise SearchError(404, "job_not_found", "Index job was not found.")
             deck = connection.execute(
-                "SELECT deleted FROM search.decks WHERE library_id=%s AND deck_id=%s FOR UPDATE",
+                "SELECT deleted,requested_revision,excluded_revision FROM search.decks "
+                "WHERE library_id=%s AND deck_id=%s FOR UPDATE",
                 (row["library_id"], row["deck_id"]),
             ).fetchone()
             if deck and deck["deleted"]:
                 raise SearchError(410, "deck_deleted", "This deck has a permanent deletion fence.")
+            if not deck or deck["requested_revision"] != row["index_revision"] or deck["excluded_revision"] == row["index_revision"]:
+                raise SearchError(409, "stale_revision", "Only the current index revision can be retried.")
             service = connection.execute(
-                "SELECT active_profile,maintenance FROM search.service_state WHERE id=1 FOR UPDATE"
+                "SELECT active_profile,maintenance,target_profile FROM search.service_state WHERE id=1 FOR UPDATE"
             ).fetchone()
-            if not service or service["maintenance"] or service["active_profile"] != row["profile_id"]:
+            if not service or service["target_profile" if service["maintenance"] else "active_profile"] != row["profile_id"]:
                 raise SearchError(503, "reindex_required", "This job belongs to an inactive embedding profile.")
             if key in row["retry_keys"]:
                 return JobAccepted(job_id=job_id, state=row["state"], status_url=f"/v1/index-jobs/{job_id}")
@@ -394,7 +522,8 @@ class SearchStore:
                                (library_id, deck_id))
 
     def search(self, request: SearchRequest, vector: list[float] | None,
-               degraded_warning: WarningDetail | None, *, deadline: float) -> SearchResponse:
+               degraded_warning: WarningDetail | None, *, deadline: float,
+               deck_ids: list[UUID] | None = None, semantic_only: bool = False) -> SearchResponse:
         try:
             with self.connection(deadline=deadline) as connection, connection.transaction():
                 connection.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
@@ -424,23 +553,28 @@ class SearchStore:
                 if request.deck_id:
                     deck_clause = " AND d.deck_id=%s"
                     params.append(request.deck_id)
+                elif deck_ids is not None:
+                    deck_clause = " AND d.deck_id=ANY(%s)"
+                    params.append(deck_ids)
                 lexical: list[dict[str, Any]] = []
-                query_row = execute(
+                query_row = None if semantic_only else execute(
                     "SELECT websearch_to_tsquery('simple',%s) AS query, "
                     "querytree(websearch_to_tsquery('simple',%s)) AS positive",
                     (request.query, request.query),
                 ).fetchone()
                 if query_row and query_row["positive"] not in (None, "", "T"):
                     lexical = execute(
-                        "WITH q AS (SELECT websearch_to_tsquery('simple',%s) AS query) "
-                        "SELECT s.deck_id,s.slide_number,s.channel,s.ordinal,s.text,s.warnings,"
+                        "WITH q AS (SELECT websearch_to_tsquery('simple',%s) AS query), best AS ("
+                        "SELECT DISTINCT ON (s.deck_id,s.slide_number) "
+                        "s.deck_id,s.slide_number,s.channel,s.ordinal,s.text,s.warnings,"
                         "ts_rank_cd(s.search_vector,q.query) AS score,d.active_generation AS generation_id,"
                         "d.active_revision AS index_revision FROM search.segments s "
                         "JOIN search.decks d ON d.library_id=s.library_id AND d.deck_id=s.deck_id "
                         "CROSS JOIN q WHERE s.library_id=%s AND d.profile_id=%s AND d.deleted=FALSE "
                         "AND d.active_revision=d.requested_revision AND s.index_revision=d.active_revision "
                         "AND s.profile_id=d.profile_id AND s.search_vector @@ q.query" + deck_clause +
-                        " ORDER BY score DESC,s.deck_id,s.slide_number,s.ordinal LIMIT %s",
+                        " ORDER BY s.deck_id,s.slide_number,score DESC,s.ordinal,s.channel) "
+                        "SELECT * FROM best ORDER BY score DESC,deck_id,slide_number LIMIT %s",
                         [request.query, *params[:2], *params[2:], request.candidate_limit],
                     ).fetchall()
                     lexical = [dict(row) for row in lexical]
@@ -448,15 +582,17 @@ class SearchStore:
                 if vector is not None:
                     vector_text = "[" + ",".join(format(value, ".9g") for value in vector) + "]"
                     semantic = [dict(row) for row in execute(
-                        "SELECT s.deck_id,s.slide_number,s.channel,s.ordinal,s.text,s.warnings,"
+                        "WITH best AS (SELECT DISTINCT ON (s.deck_id,s.slide_number) "
+                        "s.deck_id,s.slide_number,s.channel,s.ordinal,s.text,s.warnings,"
                         "(s.embedding <=> %s::vector) AS score,d.active_generation AS generation_id,"
                         "d.active_revision AS index_revision FROM search.segments s "
                         "JOIN search.decks d ON d.library_id=s.library_id AND d.deck_id=s.deck_id "
                         "WHERE s.library_id=%s AND d.profile_id=%s AND d.deleted=FALSE "
                         "AND d.active_revision=d.requested_revision AND s.index_revision=d.active_revision "
-                        "AND s.profile_id=d.profile_id" + deck_clause + " ORDER BY s.embedding <=> %s::vector, "
-                        "s.deck_id,s.slide_number,s.ordinal LIMIT %s",
-                        [vector_text, *params, vector_text, request.candidate_limit],
+                        "AND s.profile_id=d.profile_id" + deck_clause +
+                        " ORDER BY s.deck_id,s.slide_number,score,s.ordinal,s.channel) "
+                        "SELECT * FROM best ORDER BY score,deck_id,slide_number LIMIT %s",
+                        [vector_text, *params, request.candidate_limit],
                     ).fetchall()]
                 eligible = execute(
                     "SELECT coalesce(sum(d.eligible_slides),0) AS eligible_slides, "

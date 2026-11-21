@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, field_validator, model_validator
 
 
 class Record(BaseModel):
@@ -77,6 +77,13 @@ class SearchRequest(Record):
     candidate_offset: StrictInt = Field(default=0, ge=0, le=10000)
     candidate_limit: StrictInt = Field(default=2000, ge=1, le=2000)
 
+    @field_validator("query")
+    @classmethod
+    def query_is_nonblank(cls, query: str) -> str:
+        if not query.strip():
+            raise ValueError("Search query cannot be blank")
+        return query
+
 
 class Match(Record):
     slide_number: int
@@ -110,3 +117,18 @@ class SearchResponse(Record):
 class DeleteResponse(Record):
     deck_id: UUID
     state: Literal["complete"]
+
+
+class ReindexRequest(Record):
+    library_id: UUID
+    operation_id: UUID
+    profile_id: StrictStr = Field(min_length=1, max_length=128)
+
+
+class ReindexActivation(ReindexRequest):
+    ready: dict[UUID, StrictInt]
+    excluded: dict[UUID, StrictInt] = Field(default_factory=dict)
+
+
+class ReindexStatus(ReindexRequest):
+    state: Literal["building", "complete"]

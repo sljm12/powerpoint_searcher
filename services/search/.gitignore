@@ -5,3 +5,4 @@
 .ruff_cache/
 __pycache__/
 *.pyc
+/tokenizer/qwen3-embedding-8b/tokenizer.json

@@ -37,7 +37,7 @@ export type SearchStatus = {
 };
 
 export type Warning = { code: string; message: string; affected_occurrence_ids: string[] };
-export type SearchPolicy = { state: "not_configured" | "ready" | "unavailable"; profile_id: string | null; model: string | null; location: string | null; disclosure: string };
+export type SearchPolicy = { state: "not_configured" | "ready" | "unavailable"; profile_id: string | null; model: string | null; location: string | null; disclosure: string; maintenance: boolean };
 export type UploadPolicy = { include_notes: boolean; search: SearchPolicy };
 export type SearchMatch = { slide_number: number; generation_id: string; index_revision: number; score: number; score_kind: "rrf" | "lexical"; retrieval_paths: ("lexical" | "semantic")[]; matched_channel: "native" | "notes"; snippet: string; preview_url: string; warning_metadata: { code: string; message: string }[] };
 export type SearchGroup = { deck_id: string; filename: string; matches: SearchMatch[]; has_more_matches: boolean };
@@ -146,7 +146,7 @@ function parseUploadPolicy(value: unknown): UploadPolicy {
   const row = object(value, "upload policy");
   if (typeof row.include_notes !== "boolean") throw new Error("Invalid speaker notes policy response.");
   const search = row.search === undefined ? { state: "not_configured" as const, profile_id: null,
-    model: null, location: null, disclosure: "Text search is not configured." } : parseSearchPolicy(row.search);
+    model: null, location: null, disclosure: "Text search is not configured.", maintenance: false } : parseSearchPolicy(row.search);
   return { include_notes: row.include_notes, search };
 }
 
@@ -259,10 +259,11 @@ function parseSearchNotice(value: unknown): { code: string; message: string } {
 function parseSearchPolicy(value: unknown): SearchPolicy {
   const row = object(value, "search policy");
   if (row.state !== "not_configured" && row.state !== "ready" && row.state !== "unavailable") throw new Error("Invalid search policy response.");
+  if (row.maintenance !== undefined && typeof row.maintenance !== "boolean") throw new Error("Invalid search maintenance response.");
   const nullableText = (item: unknown, name: string) => item === null ? null : text(item, name);
   return { state: row.state, profile_id: nullableText(row.profile_id, "search profile"),
     model: nullableText(row.model, "search model"), location: nullableText(row.location, "search location"),
-    disclosure: text(row.disclosure, "search disclosure") };
+    disclosure: text(row.disclosure, "search disclosure"), maintenance: row.maintenance ?? false };
 }
 
 function parseSearchResponse(value: unknown): SearchResponse {
@@ -451,7 +452,9 @@ export class LibraryClient {
       credentials: "same-origin",
       headers,
     });
-    if (response.status === 401 && path.startsWith("/v1/")) window.dispatchEvent(new Event("library-session-expired"));
+    if (response.status === 401 && path.startsWith("/v1/")) {
+      window.dispatchEvent(new CustomEvent("library-session-expired", { detail: this }));
+    }
     if (!response.ok) {
       const data: unknown = await response.json().catch(() => null);
       if (typeof data === "object" && data !== null && "error" in data) {

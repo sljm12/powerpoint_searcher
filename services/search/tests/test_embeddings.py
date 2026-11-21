@@ -70,6 +70,36 @@ def test_sends_dimensions_only_when_configured() -> None:
     asyncio.run(run())
 
 
+@pytest.mark.parametrize(("status", "retryable", "requests"), [(429, True, 3), (401, False, 1)])
+def test_retries_only_transient_local_indexing_failures(
+    status: int, retryable: bool, requests: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = []
+    delays = []
+
+    async def sleep(seconds: float) -> None:
+        delays.append(seconds)
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url)
+        return httpx.Response(status, headers={"Retry-After": "2.5"})
+
+    async def run() -> None:
+        client = Embeddings(replace(settings(), max_attempts=3), httpx.MockTransport(respond))
+        try:
+            with pytest.raises(EmbeddingError) as error:
+                await client.embed(["Synthetic text only"], retry_indexing=True)
+            assert error.value.retryable is retryable
+        finally:
+            await client.close()
+
+    monkeypatch.setattr("search_service.embeddings.asyncio.sleep", sleep)
+    asyncio.run(run())
+    assert len(calls) == requests
+    assert all(url.host == "127.0.0.1" for url in calls)
+    assert delays == [2.5] * (requests - 1)
+
+
 @pytest.mark.parametrize("vector", [[0, 0], [float("inf"), 1]])
 def test_rejects_invalid_vectors(vector: list[object]) -> None:
     async def run() -> None:
@@ -87,5 +117,18 @@ def test_rejects_invalid_vectors(vector: list[object]) -> None:
             assert error.value.code == "invalid_embedding_vector"
         finally:
             await client.close()
+
+    asyncio.run(run())
+
+
+def test_rejects_oversized_and_malformed_provider_bodies() -> None:
+    async def run() -> None:
+        for body in (b"x" * 1025, b'{"model":"model","data":null}'):
+            client = Embeddings(settings(), httpx.MockTransport(lambda _: httpx.Response(200, content=body)))
+            try:
+                with pytest.raises(EmbeddingError, match="invalid_embedding_response"):
+                    await client.embed(["Synthetic fixture"])
+            finally:
+                await client.close()
 
     asyncio.run(run())

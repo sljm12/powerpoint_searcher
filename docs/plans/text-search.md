@@ -7,7 +7,7 @@ Rank decks by their best matching slide and support multilingual queries.
 Keep originals, previews, notes policy, retry safety, and deletion guarantees intact.
 Implementation was explicitly authorized on 2026-11-09 with `feature/text-search` as the intended branch. The verified commits are currently on `main` (`0fe52ca`, `6426f6f`); no PR was opened. No deployment, merge, or real library data migration is authorized.
 
-## Current execution status
+## Execution status before the follow-up
 
 S1 has an independently startable PostgreSQL/pgvector service, durable indexing jobs, exact lexical and vector retrieval, profile registration, and idempotent migration. On 2026-11-14, the search migration/probe succeeded against the database configured in `services/search/.env`, followed by a PostgreSQL-backed live indexing and retrieval workflow.
 
@@ -27,11 +27,39 @@ Use English, Spanish, and Simplified Chinese as provisional evaluation languages
 
 The administrator profile-reindex flow, evaluation and workflow scripts, held-out relevance results, 100-deck workflow, restore checks, performance measurements, browser review, and final independent review remain open. Profile activation has not been implemented or exercised. The configured search database is disposable, and the library tests can create isolated databases from its PostgreSQL server. Do not mark a milestone release-verified until its plan gates have evidence.
 
+### Validation on the configured development stack (2026-11-21)
+
+Validated the worktree at `9bfdf40` against the listeners in `dev_setup.md` and the existing search database from `set_db.bat`. Library, extraction, and search reported ready. The gateway served its sign-in page and protected routes returned 401 without a session. The database matched the active Search API library and profile. Read-only checks confirmed PostgreSQL 18.6, pgvector 0.8.7, search schema version 2, 4,096 embedding dimensions, and the lexical GIN index. This run created two synthetic deck IDs through the APIs and deleted both through the APIs. Only their deletion fences and minimal job history remain. The configured cloud model received synthetic slide, notes, and query text for the checks.
+
+| Milestone | Observed results |
+| --- | --- |
+| S1 · Search API | Blank and hidden slides produced zero segments, and a deck with only those slides returned no matches with the expected coverage. Key replay returned the same job. A new index revision replaced the old one at the same source revision and a stale submission returned 409. The replacement query returned a lexical result on the expected slide. Wrong credentials, an oversized body, and a malformed slide sequence returned 401, 413, and 400 without creating a job. Deletion and replay succeeded, with zero remaining segments or job payloads and a 410 for late submission. |
+| S2 · Library API | A four-slide upload progressed from extraction to search-ready. Upload and reprocess key replay returned the original operation. Only the native-text and notes-only slides had segments. Exact English queries ranked the expected native and notes slides first and returned generation-bound previews. Spanish and Simplified Chinese queries ranked the expected native slide first via semantic matching. The original and embedded graphic matched their SHA-256 checksums. Retry on an extracted deck returned 409. Reprocessing advanced source and index revisions and retired the old manifest and segments. After delete acceptance, library search returned zero matches and the original route was unavailable. Cleanup removed all fixture segments and job payloads, and the permanent fence rejected a late submit with 410. |
+| S3 · Browser | Chrome ran both repository fixtures at 390 px and 1440 px. Both failed because they still use the old token form. The search fixture reports a missing `#passphrase`, and the gallery fixture's library integration attempts to write to the removed `#token` field. The live sign-in page rendered at both widths. Authenticated gallery and search interactions remain unverified in the configured browser session. |
+
+The four library queries returned hybrid results. The direct replacement query returned lexical-only results without an injected fault. This exercised fallback with hits, and the cause of the lost semantic path was undetermined. The three-language fixture is a smoke check. The held-out relevance gate still needs owner-approved labels and queries.
+
+Automated checks passed with search 12, library 32, extraction 37, gateway 1, and frontend 9 tests. Four library tests that create disposable PostgreSQL databases and six extraction tests were skipped. Search and library mypy and Ruff, the library database workflow self-check, and frontend type checking and build passed.
+
+The local receipts and browser screenshots are under `.audit/text-search/validation-20261121/`. The live lanes below retain their full acceptance criteria. The workflow and evaluation scripts, existing-deck backfill, and staged profile reindex and activation are still absent. Restart and injected fault scenarios, SQLite↔PostgreSQL transfer and restore, capacity and timing baselines, and operator and independent review remain open.
+
+### Follow-up implementation and validation (2026-11-21)
+
+Backfill, the administrator rebuild operation, staged search activation, and both workflow drivers are implemented on the follow-up worktree. The configured PostgreSQL database was used without provisioning a second database. The populated schema upgrade, dimension change, activation barrier, exclusions, stale operations, and deletion during a rebuild passed in a schema created inside a rolled-back transaction. The deployed search schema was not changed. Library checks cover legacy manifests, lost activation responses, stale page refill, and restart recovery. The normal Search and Library workflow drivers passed against the configured listeners.
+
+Both browser fixtures passed in Chrome at 390 px and 1440 px. Through a temporary authenticated loopback gateway connected to the configured Library API, a generated deck advanced to search-ready without a manual refresh. Search opened its exact slide with Enter at both widths. Escape restored slide focus, the original, preview, and embedded image downloads matched their SHA-256 checksums, and browser deletion completed. The fixture also verifies retrying the session check, rendering literal snippet markup, retaining the submitted query during scoped pagination, and discarding a response that arrives after sign-out.
+
+The owner approved English, Spanish, Simplified Chinese, and the synthetic release corpus. The 30-query set includes 20 cross-language queries. The first real-model run measured recall@5 of 0.900 and best-slide relevance of 1.000, with three degraded requests. The second measured 0.833 and 1.000, with five degraded requests near the 10-second deadline. The approved recall gate of 0.85 is therefore still open. The scoped comparison returned no lexical hits on these paraphrases. The 16 queries whose separate embeddings succeeded returned the expected best slides on both vector and fused paths. During direct checks of the bounded embedding client, one synthetic request produced a correctly normalized 4,096-dimension vector in 4.5 seconds and another reached the 30-second provider timeout.
+
+A separate PostgreSQL probe measured 100 synthetic decks, 2,000 slides, and 2,400 segments at 4,096 dimensions in a rolled-back schema. Each path ran 25 interleaved warm samples with zero failures. Fused search, including database calls, ranking, and grouping, measured 93.4 ms p95 initially and 94.3 ms on repeat. The six four-query database bursts took 336–356 ms end to end. Requests queued behind the single shared database connection. The indexed fixture occupied roughly 42 MB. This probe used supplied vectors. Local model startup and throughput, end-to-end concurrent queries, target-hardware GPU usage, and trunk-versus-head regression remain unmeasured.
+
+The owner kept validation on the existing database. The separate-target restore and SQLite↔PostgreSQL transfer gates remain open. The configured embeddings endpoint is cloud-hosted, and the validation host had no running local embedding endpoint for the target-GPU gate. See `.audit/text-search/follow-up/` for the current receipts. Keep the full injected-fault matrix, release performance checks, and review gates open until their evidence exists.
+
 ## How to read this
 
 One box is one unit of work. Every box names the evidence that checks it. Check a box only when its evidence exists, such as a test receipt, API response, screenshot, or commit SHA. The body is a how-to. The appendices record decisions and unresolved evidence.
 
-Execution uses `skills/poteto-mode/playbooks/autopilot-stack.md` from the installed pstack plugin. S2 builds on S1; S3 builds on S2. The operator merges the reviewed stack bottom-up. All three changes stop at merge-ready.
+The original work used the staged execution plan below. On 2026-11-21 the owner chose one follow-up PR from `feat/token-free-frontend` because the original Search changes are already on `main`. Use `c33829d07c1a58c38cf15a7530450f71a6e306e6` as the pre-search benchmark baseline. The follow-up retains the S1, S2, and S3 evidence gates and stops at merge-ready.
 
 Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
@@ -41,7 +69,7 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 
 - [x] State this plan and protocol to the operator. Start implementation only on an explicit instruction to execute.
 - [x] On that instruction, write the plan path, S1 then S2 then S3, the verification rule, operator merge authority, and the done condition into `notes.md` in the program's store at `.audit/text-search/`.
-- [ ] Read the execution playbook, `skills/swarm/SKILL.md`, `skills/how/SKILL.md`, `skills/poteto-mode/playbooks/opening-a-pr.md`, and the feature design from the installed plugin or repository as applicable.
+- [x] Read the execution playbook, `skills/swarm/SKILL.md`, `skills/how/SKILL.md`, `skills/poteto-mode/playbooks/opening-a-pr.md`, and the feature design from the installed plugin or repository as applicable.
 - [ ] For unattended execution, arm an hourly audit using an available scheduler. Codex has no native pstack loop here. If no scheduler exists, record that limitation and keep execution attended.
 - [ ] At each audit, inspect live processes and evidence, repair drift, and post a short status message only for a new result, failure, or owner decision. Keep the decision trail under `.audit/text-search/`.
 - [ ] On a hold request, stop writes and preserve receipts and current revisions.
@@ -84,7 +112,7 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 - [x] Create `services/search/README.md`, `API.md`, `.env.example`, `pyproject.toml`, and `uv.lock`.
 - [x] Create `services/search/src/search_service/` with settings, boundary models, embedding adapter, segment builder, PostgreSQL store and migrations, durable worker, lexical and vector retrieval, slide fusion, HTTP app, and entry point.
 - [x] Create `services/search/tests/` and sanitized unit fixtures.
-- [ ] Create `scripts/check_search_workflow.py` and `scripts/evaluate_search.py`; neither script exists yet.
+- [x] Create `scripts/check_search_workflow.py` and `scripts/evaluate_search.py`. The smoke workflow and held-out evaluator both ran against the configured Search API.
 - [x] Record PostgreSQL/pgvector versions, migration, and live workflow results in `services/search/evidence/smoke.md`.
 - [ ] Record query plans, held-out model compatibility, and resource measurements in search evidence.
 
@@ -96,9 +124,9 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 - [x] Collapse each retrieval path to unique slides, combine ranks with deterministic equal-weight RRF, rank decks by their best slide, return score kinds, and label lexical fallback.
 - [x] Persist keyed jobs and snapshots, atomically publish complete builds, supersede older revisions, bound retries, and permanently fence deleted decks.
 - [x] Provide deterministic fake embedding behavior in tests and a configured real endpoint probe. The tokenizer file is available locally but is not tracked in this commit.
-- [ ] Track/package the tokenizer artifact and record model license and multilingual compatibility evidence.
+- [x] Ship reproducible tokenizer provisioning and record model license and multilingual compatibility evidence. The installer verified the configured artifact against the official SHA-256. The multilingual run records both hybrid and fallback outcomes.
 - [x] Enforce one active profile, independent startup, and actionable not-ready states.
-- [ ] Add staged maintenance and atomic profile activation; the reindex API is not implemented.
+- [x] Add staged maintenance and atomic profile activation. The PostgreSQL integration check covers a populated schema upgrade, dimension change, concurrent deletion, exclusions, and replay.
 
 **You see.**
 
@@ -149,15 +177,15 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 - [x] Update library models, API, service, and store for additive status, durable search intents, revision fencing, and safe worker reconciliation; metadata remains in its existing JSON record format, so no schema migration was needed.
 - [x] Provide the library-owned search HTTP adapter and update API/docs plus library and database tests.
 - [x] Extend `services/library/evidence/checks.md` with SQLite and PostgreSQL verification receipts.
-- [ ] Create `services/library/scripts/check_search_workflow.py`.
+- [x] Create `services/library/scripts/check_search_workflow.py`. Its normal workflow passed against the configured Library API.
 
 **Build.**
 
 - [x] Add optional search status while preserving `extracted`, bounded search settings, and sanitized authenticated policy disclosure.
 - [x] Atomically persist new search intents with manifest publication, export text over HTTP, poll jobs, and recover interrupted submissions.
-- [ ] Backfill pre-existing extracted manifests on enablement; no backfill coordinator is implemented.
+- [x] Backfill pre-existing extracted manifests with explicit opt-in. The focused worker test verifies a single submission, no extraction calls, restart recovery, and unknown legacy notes.
 - [x] Add authenticated query, per-deck more-matches, and retry gateway actions with idempotent job status.
-- [ ] Add the durable profile-reindex gateway action and operation schema.
+- [x] Add the durable profile-reindex gateway action and operation schema. Focused API coverage verifies the separate administrator credential and recovery from a lost activation response.
 - [x] Validate search results against current identity, generation, profile, and deletion state; preserve safe result metadata and refill filtered candidate windows.
 - [x] Fence locally before deletion, cancel search work, and keep deletion pending through remote cleanup; test unknown deck fencing.
 - [ ] Verify search intent/index-revision/deletion-state transfer and replay across both metadata backends and offline restore.
@@ -210,7 +238,7 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 
 - [x] Implement the search client, UI, selected-slide gallery entry, and styles in the frontend modules.
 - [x] Update client/gallery fixtures and frontend README; create `frontend/tests/search.html`.
-- [ ] Add owner-labelled relevance fixtures and held-out evaluation receipts; only synthetic UI fixtures exist.
+- [x] Add the owner-approved synthetic relevance fixtures and held-out evaluation receipts. The two configured model runs disagreed on the recall gate.
 - [ ] Update tracked deployment documentation and orchestration after inspecting ownership. Preserve the existing untracked launch scripts.
 
 **Build.**
@@ -231,7 +259,7 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
 
 - [x] Run frontend `npm run check`, `npm test`, and `npm run build`; extend malformed-response and selected-slide unit cases.
-- [ ] Exercise browser fixtures in browser automation against actual modules.
+- [x] Exercise browser fixtures in browser automation against actual modules. Both pass in Chrome at 390 px and 1440 px using session authentication fixtures.
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on the configured `swarm workers` model at the PR head, per the boot recipe.
 
@@ -267,7 +295,7 @@ Tests alone are not sufficient verification. A PR is verified only when its unit
 
 - [x] Check completed boxes against their evidence and record unsupported cases.
 - [ ] Confirm the complete upload, index, multilingual query, precise-slide preview, original download, retry, reprocess, and delete workflow on the running local system.
-- [ ] Obtain owner agreement on the language set and retrieval acceptance criteria before declaring quality sufficient.
+- [x] Obtain owner agreement on the language set and retrieval acceptance criteria before declaring quality sufficient. On 2026-11-21 the owner approved the three proposed languages, thresholds, and synthetic release corpus.
 - [ ] Deliver PR links, verification receipts, measurements, configuration instructions, and remaining limitations. Do not declare visual search complete.
 
 ## Appendix A. Prototype evidence

@@ -3,10 +3,12 @@
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Search workflow checks</title></head>
 <body>
   <main id="app">
-    <form id="connect-form"><input id="token" type="password"><button type="submit">Connect</button></form>
+    <form id="connect-form"><input id="passphrase" type="password"><button type="submit">Sign in</button></form>
+    <button id="retry-connection" type="button" hidden>Retry connection</button>
     <p id="status" role="status"></p>
     <section id="library" hidden>
       <p id="notes-policy"></p><button id="refresh" type="button">Refresh</button>
+      <button id="sign-out" type="button">Sign out</button>
       <form id="search-form"><label for="search-query">Query</label><input id="search-query" type="search"><button id="search-submit" type="submit">Search slides</button></form>
       <p id="search-disclosure"></p><p id="search-status" role="status"></p><div id="search-results"></div>
       <form id="upload-form"><input id="deck-file" type="file"><span id="file-name"></span></form>
@@ -20,21 +22,43 @@
     const assetId = "33333333-3333-4333-8333-333333333333";
     const checksum = "a".repeat(64);
     const png = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/S3sAAAAASUVORK5CYII="), (char) => char.charCodeAt(0));
+    let sessionRequests = 0;
+    let resolveLateSearch;
+    let requestedMoreQuery;
+    let logout = false;
     globalThis.fetch = async (input, init = {}) => {
       const url = new URL(String(input), location.href);
+      if (url.pathname === "/auth/session") {
+        if (++sessionRequests === 1) return new Response(null, { status: 503 });
+        return Response.json({ authenticated: true, csrf_token: "fixture-csrf" });
+      }
+      if (url.pathname === "/auth/logout") {
+        logout = true;
+        return new Response(null, { status: 204 });
+      }
       if (url.pathname.endsWith("/v1/policy")) return Response.json({ include_notes: true,
         search: { state: "ready", profile_id: "fixture-profile", model: "local fixture", location: "local",
           disclosure: "Native slide text, included notes, and queries stay on the local endpoint." } });
       if (url.pathname.endsWith("/v1/decks") && init.method !== "DELETE") return Response.json([]);
       if (url.pathname.endsWith("/v1/deletions")) return Response.json([]);
-      if (url.pathname.endsWith("/v1/search")) return Response.json({ query_id: generationId,
+      if (url.pathname.endsWith("/v1/search")) {
+        const params = JSON.parse(init.body);
+        check(init.headers.get("X-CSRF-Token") === "fixture-csrf" && !init.headers.has("Authorization"), "Search uses the session CSRF token.");
+        if (params.deck_id) {
+          requestedMoreQuery = params.query;
+          check((params.offset ?? 0) === 0, "More matches start at the top of the deck's scoped ranking.");
+        }
+        const response = Response.json({ query_id: generationId,
         profile_id: "fixture-profile", mode: "hybrid", degraded: false, warnings: [],
         coverage: { eligible_slides: 1 }, next_offset: null, decks: [{ deck_id: deckId,
-          filename: "Quarterly plan.pptx", has_more_matches: false, matches: [{ slide_number: 1,
+          filename: "Quarterly plan.pptx", has_more_matches: !params.deck_id, matches: (params.deck_id ? [2, 1] : [1]).map((slide_number) => ({ slide_number,
             generation_id: generationId, index_revision: 1, score: 0.04, score_kind: "rrf",
             retrieval_paths: ["lexical", "semantic"], matched_channel: "notes",
             snippet: "<img src=x onerror=alert(1)> battery storage plan", preview_url: `/v1/decks/${deckId}/generations/${generationId}/assets/${assetId}`,
-            warning_metadata: [] }] }] });
+            warning_metadata: [] })) }] });
+        if (params.query === "slow request") return new Promise((resolve) => { resolveLateSearch = () => resolve(response); });
+        return response;
+      }
       if (url.pathname === `/v1/decks/${deckId}`) return Response.json({ deck_id: deckId, filename: "Quarterly plan.pptx",
         source_sha256: checksum, byte_length: 4, source_revision: 1, state: "extracted", operation_id: generationId,
         generation_id: generationId, completed_slides: 1, total_slides: 1, stage: "complete", error: null,
@@ -58,8 +82,9 @@
     const tick = () => new Promise((resolve) => setTimeout(resolve, 40));
     try {
       await import("../src/main.ts");
-      document.querySelector("#token").value = "fixture-library-token-0123456789abcdef";
-      document.querySelector("#connect-form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      await tick();
+      check(!document.querySelector("#retry-connection").hidden, "A failed session check exposes Retry.");
+      document.querySelector("#retry-connection").click();
       await tick();
       check(!document.querySelector("#library").hidden, "The page connects through the library client.");
       check(document.querySelector("#search-disclosure").textContent.includes("local endpoint"), "The processing disclosure is visible.");
@@ -67,7 +92,12 @@
       document.querySelector("#search-form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
       await tick();
       check(document.querySelector(".search-snippet").textContent.includes("<img src=x onerror=alert(1)>"), "Search snippets render as plain text.");
-      check(document.querySelector(".search-match img") === null, "Snippet markup cannot create an image element.");
+      check(document.querySelector(".search-snippet img") === null, "Snippet markup cannot create an image element.");
+      check(document.querySelector(".search-preview img"), "The preview loads through the authenticated client.");
+      document.querySelector("#search-query").value = "unsubmitted edit";
+      [...document.querySelectorAll(".search-deck-group button")].find((button) => button.textContent.startsWith("More matches")).click();
+      await tick();
+      check(requestedMoreQuery === "battery storage" && document.querySelectorAll(".search-match").length === 2, "More matches reuse the submitted query.");
       document.querySelector(".search-match button").click();
       await tick();
       check(document.querySelector("dialog").open, "The selected result opens the gallery slide dialog.");
@@ -76,7 +106,16 @@
       document.querySelector(".gallery .button").click();
       await tick();
       check(!document.querySelector("#library").hidden, "Closing the gallery restores the library page.");
-      document.querySelector("#fixture-result").textContent = "PASS: disclosure, safe snippet, authenticated preview, exact-slide gallery";
+      document.querySelector("#search-query").value = "slow request";
+      document.querySelector("#search-form").requestSubmit();
+      await tick();
+      document.querySelector("#sign-out").click();
+      await tick();
+      check(logout && document.querySelector("#library").hidden, "Sign-out closes the library.");
+      resolveLateSearch();
+      await tick();
+      check(!document.querySelector(".search-match"), "A late search response cannot repopulate results after sign-out.");
+      document.querySelector("#fixture-result").textContent = "PASS: session retry, disclosure, safe snippet, preview, more matches, exact-slide gallery, stale request";
     } catch (error) {
       document.querySelector("#fixture-result").textContent = `FAIL: ${error instanceof Error ? error.message : String(error)}`;
       throw error;

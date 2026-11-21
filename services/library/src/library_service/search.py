@@ -23,6 +23,15 @@ class Policy(BaseModel):
     model: str = Field(min_length=1, max_length=128)
     location: str
     disclosure: str
+    maintenance: bool = False
+
+
+class ReindexStatus(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    library_id: UUID
+    operation_id: UUID
+    profile_id: str
+    state: Literal["building", "complete"]
 
 
 class Job(BaseModel):
@@ -72,6 +81,9 @@ class SearchClient:
                         headers={"Idempotency-Key": key} if key else None) as response:
                     if not 200 <= response.status_code < 300:
                         retryable = response.status_code in (408, 429, 500, 502, 503, 504)
+                        if path.startswith("/v1/reindex/") and response.status_code == 409:
+                            raise SearchError("reindex_conflict",
+                                              "Search could not advance the profile rebuild. Check the configured profile and cohort.", True)
                         raise SearchError("search_unavailable" if retryable else "search_rejected",
                                           "Search indexing is unavailable. Check its readiness and retry.", retryable)
                     if response.headers.get("content-type", "").split(";", 1)[0] != "application/json":
@@ -121,6 +133,21 @@ class SearchClient:
 
     async def query(self, payload: dict[str, object]) -> SearchResult:
         return cast(SearchResult, self._validate(SearchResult, await self._json("POST", "/v1/search", payload)))
+
+    async def reindex(self, action: Literal["begin", "activate"], library_id: UUID, operation_id: UUID,
+                      profile_id: str, cohort: tuple[dict[UUID, int], dict[UUID, int]] | None = None) -> ReindexStatus:
+        payload: dict[str, object] = {"library_id": str(library_id), "operation_id": str(operation_id),
+                                      "profile_id": profile_id}
+        if cohort is not None:
+            ready, excluded = cohort
+            payload.update(ready={str(deck): revision for deck, revision in ready.items()},
+                           excluded={str(deck): revision for deck, revision in excluded.items()})
+        status = cast(ReindexStatus, self._validate(ReindexStatus, await self._json(
+            "POST", f"/v1/reindex/{action}", payload
+        )))
+        if (status.library_id, status.operation_id, status.profile_id) != (library_id, operation_id, profile_id):
+            raise SearchError("invalid_search_response", "Search returned an unexpected rebuild identity.")
+        return status
 
     @staticmethod
     def public_status(job: JobStatus) -> SearchStatus:

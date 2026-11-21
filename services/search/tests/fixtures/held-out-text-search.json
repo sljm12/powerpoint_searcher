@@ -1,0 +1,530 @@
+{
+  "decks": [
+    {
+      "id": "topic-1",
+      "language": "en",
+      "slides": [
+        {
+          "slide_number": 1,
+          "native_text": "Workshop handout",
+          "notes_text": "A hospital centralizes cleanup and uses autoclaves to sterilize surgical tools between operations."
+        },
+        {
+          "slide_number": 2,
+          "native_text": "A cold-chain operator — inventory records are filed by date."
+        },
+        {
+          "slide_number": 3,
+          "hidden": true,
+          "native_text": "Internal workshop copy, hidden."
+        },
+        {
+          "slide_number": 4
+        }
+      ]
+    },
+    {
+      "id": "topic-2",
+      "language": "es",
+      "slides": [
+        {
+          "slide_number": 1,
+          "native_text": "El operador de metro reduce el consumo mediante frenado regenerativo, que recupera electricidad al desacelerar los trenes."
+        },
+        {
+          "slide_number": 2,
+          "native_text": "La cooperativa agrícola — inventory records are filed by date."
+        },
+        {
+          "slide_number": 3,
+          "hidden": true,
+          "native_text": "Internal workshop copy, hidden."
+        },
+        {
+          "slide_number": 4
+        }
+      ]
+    },
+    {
+      "id": "topic-3",
+      "language": "zh",
+      "slides": [
+        {
+          "slide_number": 1,
+          "native_text": "海岸防洪项目种植红树林，以削弱风暴潮并保护沿海居民。"
+        },
+        {
+          "slide_number": 2,
+          "native_text": "卫星通信中断时 — inventory records are filed by date."
+        },
+        {
+          "slide_number": 3,
+          "hidden": true,
+          "native_text": "Internal workshop copy, hidden."
+        },
+        {
+          "slide_number": 4
+        }
+      ]
+    },
+    {
+      "id": "topic-4",
+      "language": "en",
+      "slides": [
+        {
+          "slide_number": 1,
+          "native_text": "Workshop handout",
+          "notes_text": "A cold-chain operator tracks vaccine shipment temperatures and quarantines spoiled batches when refrigeration fails."
+        },
+        {
+          "slide_number": 2,
+          "native_text": "A software team — inventory records are filed by date."
+        },
+        {
+          "slide_number": 3,
+          "hidden": true,
+          "native_text": "Internal workshop copy, hidden."
+        },
+        {
+          "slide_number": 4
+        }
+      ]
+    },
+    {
+      "id": "topic-5",
+      "language": "es",
+      "slides": [
+        {
+          "slide_number": 1,
+          "native_text": "La cooperativa agrícola alterna leguminosas y cereales para recuperar el nitrógeno del suelo y reducir el fertilizante."
+        },
+        {
+          "slide_number": 2,
+          "native_text": "Una fábrica reutiliza — inventory records are filed by date."
+        },
+        {
+          "slide_number": 3,
+          "hidden": true,
+          "native_text": "Internal workshop copy, hidden."
+        },
+        {
+          "slide_number": 4
+        }
+      ]
+    },
+    {
+      "id": "topic-6",
+      "language": "zh",
+      "slides": [
+        {
+          "slide_number": 1,
+          "native_text": "卫星通信中断时，应急人员以无线电网格传递撤离指令。"
+        },
+        {
+          "slide_number": 2,
+          "native_text": "社区图书馆借出无人机和摄像器材 — inventory records are filed by date."
+        },
+        {
+          "slide_number": 3,
+          "hidden": true,
+          "native_text": "Internal workshop copy, hidden."
+        },
+        {
+          "slide_number": 4
+        }
+      ]
+    },
+    {
+      "id": "topic-7",
+      "language": "en",
+      "slides": [
+        {
+          "slide_number": 1,
+          "native_text": "Workshop handout",
+          "notes_text": "A software team ships a patch to a small fraction of users and rolls it back on elevated error rates."
+        },
+        {
+          "slide_number": 2,
+          "native_text": "Warehouse staff separate — inventory records are filed by date."
+        },
+        {
+          "slide_number": 3,
+          "hidden": true,
+          "native_text": "Internal workshop copy, hidden."
+        },
+        {
+          "slide_number": 4
+        }
+      ]
+    },
+    {
+      "id": "topic-8",
+      "language": "es",
+      "slides": [
+        {
+          "slide_number": 1,
+          "native_text": "Una fábrica reutiliza el calor residual de los hornos para precalentar agua y reducir el consumo energético."
+        },
+        {
+          "slide_number": 2,
+          "native_text": "A hospital centralizes — inventory records are filed by date."
+        },
+        {
+          "slide_number": 3,
+          "hidden": true,
+          "native_text": "Internal workshop copy, hidden."
+        },
+        {
+          "slide_number": 4
+        }
+      ]
+    },
+    {
+      "id": "topic-9",
+      "language": "zh",
+      "slides": [
+        {
+          "slide_number": 1,
+          "native_text": "社区图书馆借出无人机和摄像器材，并设置设备归还预约。"
+        },
+        {
+          "slide_number": 2,
+          "native_text": "El operador de — inventory records are filed by date."
+        },
+        {
+          "slide_number": 3,
+          "hidden": true,
+          "native_text": "Internal workshop copy, hidden."
+        },
+        {
+          "slide_number": 4
+        }
+      ]
+    },
+    {
+      "id": "topic-10",
+      "language": "en",
+      "slides": [
+        {
+          "slide_number": 1,
+          "native_text": "Workshop handout",
+          "notes_text": "Warehouse staff separate end-of-life lithium batteries into fire-resistant containers before transport for recycling."
+        },
+        {
+          "slide_number": 2,
+          "native_text": "海岸防洪项目种植红树林 — inventory records are filed by date."
+        },
+        {
+          "slide_number": 3,
+          "hidden": true,
+          "native_text": "Internal workshop copy, hidden."
+        },
+        {
+          "slide_number": 4
+        }
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "language": "en",
+      "text": "instrument sterilisation in a hospital",
+      "relevant": [
+        {
+          "deck": "topic-1",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "es",
+      "text": "desinfección del instrumental para operaciones",
+      "relevant": [
+        {
+          "deck": "topic-1",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "zh",
+      "text": "医院怎样给手术器械灭菌",
+      "relevant": [
+        {
+          "deck": "topic-1",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "en",
+      "text": "how metro trains recover energy when slowing down",
+      "relevant": [
+        {
+          "deck": "topic-2",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "es",
+      "text": "cómo se reutiliza la energía al frenar el metro",
+      "relevant": [
+        {
+          "deck": "topic-2",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "zh",
+      "text": "地铁减速时如何回收电能",
+      "relevant": [
+        {
+          "deck": "topic-2",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "en",
+      "text": "using coastal trees to protect residents against storm surges",
+      "relevant": [
+        {
+          "deck": "topic-3",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "es",
+      "text": "bosques costeros que frenan las marejadas ciclónicas",
+      "relevant": [
+        {
+          "deck": "topic-3",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "zh",
+      "text": "红树林如何防御风暴潮",
+      "relevant": [
+        {
+          "deck": "topic-3",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "en",
+      "text": "moving vaccines without losing refrigeration",
+      "relevant": [
+        {
+          "deck": "topic-4",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "es",
+      "text": "envío de vacunas y control de la refrigeración",
+      "relevant": [
+        {
+          "deck": "topic-4",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "zh",
+      "text": "如何保持疫苗运输冷链",
+      "relevant": [
+        {
+          "deck": "topic-4",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "en",
+      "text": "alternating crops to improve nitrogen in soil",
+      "relevant": [
+        {
+          "deck": "topic-5",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "es",
+      "text": "rotación agrícola con leguminosas para aumentar el nitrógeno",
+      "relevant": [
+        {
+          "deck": "topic-5",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "zh",
+      "text": "用豆科和谷物轮作提升土壤氮含量",
+      "relevant": [
+        {
+          "deck": "topic-5",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "en",
+      "text": "emergency evacuation radio when satellites fail",
+      "relevant": [
+        {
+          "deck": "topic-6",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "es",
+      "text": "enviar órdenes de evacuación por radio sin satélites",
+      "relevant": [
+        {
+          "deck": "topic-6",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "zh",
+      "text": "卫星失联时怎样通过电台指挥撤离",
+      "relevant": [
+        {
+          "deck": "topic-6",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "en",
+      "text": "a staged software rollout with rollback when errors rise",
+      "relevant": [
+        {
+          "deck": "topic-7",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "es",
+      "text": "lanzamiento gradual de una actualización y reversión si aumentan los errores",
+      "relevant": [
+        {
+          "deck": "topic-7",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "zh",
+      "text": "软件更新灰度发布和故障回滚",
+      "relevant": [
+        {
+          "deck": "topic-7",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "en",
+      "text": "use heat from industrial ovens to warm water",
+      "relevant": [
+        {
+          "deck": "topic-8",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "es",
+      "text": "aprovechamiento del calor sobrante del horno",
+      "relevant": [
+        {
+          "deck": "topic-8",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "zh",
+      "text": "工厂用炉子余热预热水",
+      "relevant": [
+        {
+          "deck": "topic-8",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "en",
+      "text": "borrowing cameras and drones from the library",
+      "relevant": [
+        {
+          "deck": "topic-9",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "es",
+      "text": "préstamo bibliotecario de cámaras y drones",
+      "relevant": [
+        {
+          "deck": "topic-9",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "zh",
+      "text": "从社区图书馆借摄像机和无人机",
+      "relevant": [
+        {
+          "deck": "topic-9",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "en",
+      "text": "safe disposal and recycling of used lithium cells",
+      "relevant": [
+        {
+          "deck": "topic-10",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "es",
+      "text": "contenedores ignífugos para reciclar baterías de litio usadas",
+      "relevant": [
+        {
+          "deck": "topic-10",
+          "slide": 1
+        }
+      ]
+    },
+    {
+      "language": "zh",
+      "text": "废锂电池回收前如何防火存放",
+      "relevant": [
+        {
+          "deck": "topic-10",
+          "slide": 1
+        }
+      ]
+    }
+  ]
+}

@@ -27,10 +27,10 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .extraction import Extraction
 from .models import (Accepted, Deck, DeletionStatus, Manifest, Operation, SearchPolicy,
-                     SearchQuery, SearchResult, SearchStatus, ServiceError, UploadPolicy)
+                     SearchQuery, SearchReindex, SearchResult, SearchStatus, ServiceError, UploadPolicy)
 from .metadata import StorageUnavailable
 from .service import Library
-from .search import SearchClient
+from .search import SearchClient, SearchError
 from .store import Store
 
 
@@ -54,6 +54,8 @@ class Settings:
     include_notes: bool = True
     search_url: str | None = None
     search_token: str | None = None
+    search_backfill: bool = False
+    search_admin_token: str | None = None
 
     def __post_init__(self) -> None:
         if any(len(token.encode()) < 32 or not token.isascii() or any(ord(c) < 33 or ord(c) > 126 for c in token)
@@ -77,6 +79,12 @@ class Settings:
             raise ValueError("LIBRARY_POSTGRES_DSN requires LIBRARY_DB_BACKEND=postgresql")
         if bool(self.search_url) != bool(self.search_token):
             raise ValueError("Configure both LIBRARY_SEARCH_URL and LIBRARY_SEARCH_TOKEN")
+        if self.search_admin_token is not None and (
+            len(self.search_admin_token) < 32 or not self.search_admin_token.isascii()
+            or any(not 33 <= ord(char) <= 126 for char in self.search_admin_token)
+            or self.search_admin_token in (self.token, self.extraction_token, self.search_token)
+        ):
+            raise ValueError("LIBRARY_SEARCH_ADMIN_TOKEN requires a separate printable ASCII token of at least 32 bytes")
         if self.search_url:
             parsed_search = urlsplit(self.search_url)
             if (parsed_search.scheme not in ("http", "https") or not parsed_search.hostname
@@ -103,6 +111,9 @@ class Settings:
         raw_notes_policy = os.environ.get("LIBRARY_INCLUDE_NOTES", "true").strip().lower()
         if raw_notes_policy not in ("true", "false"):
             raise ValueError("LIBRARY_INCLUDE_NOTES must be true or false")
+        search_backfill = os.environ.get("LIBRARY_SEARCH_BACKFILL", "false").strip().lower()
+        if search_backfill not in ("true", "false"):
+            raise ValueError("LIBRARY_SEARCH_BACKFILL must be true or false")
         return cls(data_dir=Path(root), token=os.environ.get("LIBRARY_TOKEN", ""),
                    extraction_url=os.environ.get("EXTRACTION_URL", "http://127.0.0.1:8001"),
                    extraction_token=os.environ.get("EX1_TOKEN", ""),
@@ -111,7 +122,9 @@ class Settings:
                    postgres_dsn=os.environ.get("LIBRARY_POSTGRES_DSN"),
                    include_notes=raw_notes_policy == "true",
                    search_url=os.environ.get("LIBRARY_SEARCH_URL") or None,
-                   search_token=os.environ.get("LIBRARY_SEARCH_TOKEN") or None)
+                   search_token=os.environ.get("LIBRARY_SEARCH_TOKEN") or None,
+                   search_backfill=search_backfill == "true",
+                   search_admin_token=os.environ.get("LIBRARY_SEARCH_ADMIN_TOKEN") or None)
 
 
 def private_directory(root: Path) -> None:
@@ -234,7 +247,8 @@ def create_app(settings: Settings, transport: httpx.AsyncBaseTransport | None = 
             if settings.search_url and settings.search_token:
                 search = SearchClient(settings.search_url, settings.search_token,
                                       settings.request_timeout, transport)
-            library = Library(store, extraction, settings.poll_interval, settings.retry_limit, search)
+            library = Library(store, extraction, settings.poll_interval, settings.retry_limit, search,
+                              settings.search_backfill)
             app.state.library = library
             task = asyncio.create_task(library.run()) if start_worker else None
             app.state.worker = task
@@ -300,9 +314,11 @@ def create_app(settings: Settings, transport: httpx.AsyncBaseTransport | None = 
         else:
             try:
                 remote = await library.search.policy()
+                maintenance = remote.maintenance or library.store.current_search_reindex() is not None
                 search_policy = SearchPolicy(state="ready", profile_id=remote.profile_id,
-                    model=remote.model, location=remote.location, disclosure=remote.disclosure)
-            except Exception:
+                    model=remote.model, location=remote.location, disclosure=remote.disclosure,
+                    maintenance=maintenance)
+            except SearchError:
                 search_policy = SearchPolicy(state="unavailable",
                     disclosure="Search is temporarily unavailable. Indexing and search requests will retry when it recovers.")
         return UploadPolicy(include_notes=settings.include_notes, search=search_policy)
@@ -311,6 +327,42 @@ def create_app(settings: Settings, transport: httpx.AsyncBaseTransport | None = 
     async def search(request: Request, query: SearchQuery) -> SearchResult:
         library: Library = request.app.state.library
         return await library.search_query(query)
+
+    def require_search_admin(request: Request) -> Library:
+        supplied = request.headers.get("x-search-admin-token", "").encode("utf-8")
+        if settings.search_admin_token is None or not hmac.compare_digest(supplied, settings.search_admin_token.encode()):
+            raise ServiceError(403, "search_admin_required", "A search administrator credential is required.")
+        library: Library = request.app.state.library
+        return library
+
+    @app.post("/v1/search/reindex", response_model=SearchReindex, status_code=202)
+    async def start_search_reindex(request: Request) -> SearchReindex:
+        library = require_search_admin(request)
+        key = request_key(request)
+        if await request.body():
+            raise ServiceError(400, "malformed_request", "This operation requires an empty body.")
+        if library.search is None:
+            raise ServiceError(503, "search_not_configured", "Text search is not configured.")
+        try:
+            policy = await library.search.policy()
+        except SearchError as error:
+            raise ServiceError(503, error.code, error.message, error.retryable) from None
+        operation = library.store.start_search_reindex(key, policy.profile_id)
+        library.wake.set()
+        return operation
+
+    @app.get("/v1/search/reindex/{operation_id}", response_model=SearchReindex)
+    async def search_reindex_status(operation_id: UUID, request: Request) -> SearchReindex:
+        return require_search_admin(request).store.search_reindex(operation_id)
+
+    @app.put("/v1/search/reindex/{operation_id}/excluded/{deck_id}", response_model=SearchReindex)
+    async def exclude_search_reindex(operation_id: UUID, deck_id: UUID, request: Request) -> SearchReindex:
+        library = require_search_admin(request)
+        if await request.body():
+            raise ServiceError(400, "malformed_request", "This operation requires an empty body.")
+        operation = library.store.exclude_search_reindex_deck(operation_id, deck_id)
+        library.wake.set()
+        return operation
 
     @app.post("/v1/decks/{deck_id}/search/retry", response_model=SearchStatus)
     async def retry_search(deck_id: UUID, request: Request) -> SearchStatus:

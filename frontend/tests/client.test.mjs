@@ -90,7 +90,7 @@ test("reads policy without exposing a backend authorization header", async () =>
   try {
     assert.deepEqual(await new LibraryClient("csrf-token").uploadPolicy(), {
       include_notes: false,
-      search: { state: "not_configured", profile_id: null, model: null, location: null, disclosure: "Text search is not configured." },
+      search: { state: "not_configured", profile_id: null, model: null, location: null, disclosure: "Text search is not configured.", maintenance: false },
     });
   } finally {
     globalThis.fetch = originalFetch;

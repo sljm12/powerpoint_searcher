@@ -16,7 +16,8 @@ from pydantic import ValidationError
 
 from library_service.api import Settings, create_app
 from library_service.extraction import Extraction, UpstreamError
-from library_service.models import ErrorDetail, Job, Manifest, SearchStatus, ServiceError
+from library_service.models import ErrorDetail, Job, Manifest, SearchQuery, SearchStatus, ServiceError
+from library_service.search import SearchClient
 from library_service.service import Library
 from library_service.store import Store
 
@@ -469,6 +470,156 @@ def test_search_intent_is_durable_and_deletion_queues_a_fence(tmp_path: Path) ->
     )
     assert not restored._deck(accepted.deck_id, allow_deleted=True).search_delete_pending
     restored.close()
+
+
+def test_backfill_uses_stored_manifest_once_without_extraction(tmp_path: Path) -> None:
+    async def run() -> None:
+        data = tmp_path / "library"
+        previous = Store(data)
+        accepted = previous.upload(put_source(tmp_path), "team.pptx", "legacy-upload")
+        work = previous.due()
+        assert work
+        published = Manifest.model_validate(manifest(accepted.deck_id, uuid4(), 1,
+            hashlib.sha256(b"deck").hexdigest(), "team.pptx"))
+        previous.publish(work, published)
+        previous.close()
+        store = Store(data, search_configured=True)
+        calls = []
+
+        def search_remote(request: httpx.Request) -> httpx.Response:
+            calls.append(request.url.path)
+            if request.url.path == "/v1/policy":
+                return httpx.Response(200, json={"library_id": None, "profile_id": "profile",
+                    "location": "local", "model": "fixture", "disclosure": "Synthetic local model"})
+            if request.url.path == "/v1/index-jobs":
+                body = json.loads(request.content)
+                assert body["generation_id"] == str(published.generation_id)
+                assert body["slides"][0]["native_text"] == "Native text"
+                assert body["slides"][0]["notes_text"] == ""
+                return httpx.Response(202, json={"job_id": str(uuid4()), "state": "queued", "status_url": "/job"})
+            raise AssertionError("Unexpected Search API request")
+
+        extraction = Extraction("http://extract", EXTRACTION_TOKEN,
+                                transport=httpx.MockTransport(lambda _: pytest.fail("Backfill used extraction")))
+        search = SearchClient("http://search", "test", transport=httpx.MockTransport(search_remote))
+        service = Library(store, extraction, search=search, search_backfill=True)
+        try:
+            assert service.backfill_search_one()
+            assert not service.backfill_search_one()
+            assert await service.reconcile_search_one()
+            assert calls == ["/v1/policy", "/v1/index-jobs"]
+            assert store.manifest(accepted.deck_id, published.generation_id).content.slides[0].notes is None
+        finally:
+            await extraction.close()
+            await search.close()
+            store.close()
+        restored = Store(data, search_configured=True)
+        try:
+            assert restored.next_search_backfill() is None
+            deck = restored.deck(accepted.deck_id)
+            assert deck.search and deck.search.index_revision == 1
+        finally:
+            restored.close()
+
+    asyncio.run(run())
+
+
+def test_reindex_requires_admin_and_recovers_a_lost_activation_response(tmp_path: Path) -> None:
+    payloads = []
+    successful_activation = False
+
+    def remote(request: httpx.Request) -> httpx.Response:
+        nonlocal successful_activation
+        if request.url.path == "/v1/policy":
+            return httpx.Response(200, json={"library_id": None, "profile_id": "new-profile",
+                "location": "local", "model": "fixture", "disclosure": "Synthetic local model"})
+        payload = json.loads(request.content)
+        payloads.append(payload)
+        identity = {key: payload[key] for key in ("library_id", "operation_id", "profile_id")}
+        if request.url.path == "/v1/reindex/begin":
+            return httpx.Response(200, json=identity | {"state": "building"})
+        if request.url.path == "/v1/reindex/activate":
+            assert payload["ready"] == {} and payload["excluded"] == {}
+            if not successful_activation:
+                successful_activation = True
+                raise httpx.ReadTimeout("Lost response", request=request)
+            return httpx.Response(200, json=identity | {"state": "complete"})
+        raise AssertionError("Unexpected Search API request")
+
+    admin = "internal-search-maintenance-test-credential"
+    settings = Settings(tmp_path / "library", TOKEN, "http://extract", EXTRACTION_TOKEN,
+                        search_url="http://localhost", search_token="distinct-search-service-credential",
+                        search_admin_token=admin, poll_interval=0.01)
+    admin_headers = HEADERS | {"X-Search-Admin-Token": admin, "Idempotency-Key": "rebuild"}
+    with TestClient(create_app(settings, httpx.MockTransport(remote), False, False)) as client:
+        assert client.post("/v1/search/reindex", headers=HEADERS).status_code == 403
+        accepted = client.post("/v1/search/reindex", headers=admin_headers)
+        assert accepted.status_code == 202
+        operation_id = accepted.json()["operation_id"]
+        assert client.post("/v1/search/reindex", headers=admin_headers).json()["operation_id"] == operation_id
+        assert client.post("/v1/search", headers=HEADERS, json={"query": "test"}).json()["error"]["code"] == "reindex_required"
+        assert client.portal is not None
+        service = client.app.state.library
+        client.portal.call(service.reconcile_search_reindex)
+        client.portal.call(service.reconcile_search_reindex)
+        assert client.get(f"/v1/search/reindex/{operation_id}", headers=admin_headers).json()["state"] == "building"
+    with TestClient(create_app(settings, httpx.MockTransport(remote), False, False)) as client:
+        assert client.portal is not None
+        client.portal.call(client.app.state.library.reconcile_search_reindex)
+        assert client.get(f"/v1/search/reindex/{operation_id}", headers=admin_headers).json()["state"] == "complete"
+    assert payloads[-1] == payloads[-2]
+
+
+def test_search_refills_a_stale_page_and_preserves_a_retained_generation(tmp_path: Path) -> None:
+    async def run() -> None:
+        store = Store(tmp_path / "library", search_configured=True)
+        accepted = store.upload(put_source(tmp_path), "team.pptx", "search-upload")
+        work = store.due()
+        assert work
+        generation = uuid4()
+        published = Manifest.model_validate(manifest(accepted.deck_id, generation, 1,
+            hashlib.sha256(b"deck").hexdigest(), "team.pptx"))
+        store.publish(work, published, {"slides": []}, "fixture-key", True)
+        queued = store.search_work()
+        assert queued
+        ready = SearchStatus(state="ready", source_revision=1, index_revision=1,
+                             profile_id="profile", generation_id=generation, job_id=uuid4(),
+                             eligible_slides=1, searchable_slides=1)
+        assert store.search_submitted(accepted.deck_id, ready, expected_status=queued[3],
+                                      expected_key=queued[2], expected_retry_key=queued[4])
+        store.start(accepted.deck_id, "new-generation", False)
+        offsets = []
+
+        def remote(request: httpx.Request) -> httpx.Response:
+            if request.url.path == "/v1/policy":
+                return httpx.Response(200, json={"library_id": None, "profile_id": "profile",
+                    "location": "local", "model": "fixture", "disclosure": "Synthetic local model"})
+            offset = json.loads(request.content)["candidate_offset"]
+            offsets.append(offset)
+            match = {"generation_id": str(generation), "index_revision": 1, "slide_number": 1,
+                     "score": 0.03, "score_kind": "rrf", "retrieval_paths": ["lexical"],
+                     "matched_channel": "native", "snippet": "fixture text", "warning_metadata": []}
+            return httpx.Response(200, json={"query_id": str(uuid4()), "profile_id": "profile",
+                "mode": "hybrid", "degraded": False, "warnings": [], "coverage": {"searchable_slides": 999},
+                "decks": [{"deck_id": str(uuid4() if offset == 0 else accepted.deck_id),
+                           "matches": [match], "has_more_matches": False}],
+                "next_offset": 1 if offset == 0 else None})
+
+        extraction = Extraction("http://extract", EXTRACTION_TOKEN)
+        search = SearchClient("http://search", "test", transport=httpx.MockTransport(remote))
+        try:
+            response = await Library(store, extraction, search=search).search_query(SearchQuery(query="fixture", limit=1))
+            assert offsets == [0, 1]
+            assert response.coverage["searchable_slides"] == 1
+            assert [group.deck_id for group in response.decks] == [accepted.deck_id]
+            assert response.decks[0].matches[0].preview_url is not None
+            assert response.next_offset is None
+        finally:
+            await extraction.close()
+            await search.close()
+            store.close()
+
+    asyncio.run(run())
 
 
 def test_malformed_notes_failure_is_actionable_and_redacted(tmp_path: Path) -> None:

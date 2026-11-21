@@ -6,7 +6,7 @@ This service owns text indexing, exact vector retrieval, lexical retrieval, and 
 
 Use a dedicated PostgreSQL 18 database with pgvector 0.8.7 installed by a database administrator. This pairing was verified against PostgreSQL 18.6 and pgvector 0.8.7 in the dedicated database configured through `set_db.bat`. Do not reuse the library metadata database. Copy `.env.example` to `.env`; `.env` is ignored by Git. Values already present in the process environment take precedence over values in `.env`.
 
-The service uses the OpenAI Python client against an OpenAI-compatible embeddings API. Before enabling cloud mode, account for native slide text, included speaker notes, and search queries being sent to the configured provider. Local mode requires a loopback HTTP endpoint. Cloud mode requires HTTPS and both `SEARCH_EMBEDDING_LOCATION=cloud` and `SEARCH_EMBEDDING_ALLOW_CLOUD=true`.
+The service uses an OpenAI-compatible embeddings API. Before enabling cloud mode, account for native slide text, included speaker notes, and search queries being sent to the configured provider. Local mode requires a loopback HTTP endpoint. Cloud mode requires HTTPS and both `SEARCH_EMBEDDING_LOCATION=cloud` and `SEARCH_EMBEDDING_ALLOW_CLOUD=true`.
 
 ### Environment settings
 
@@ -60,6 +60,10 @@ uv run --env-file .env --locked python scripts/test_openrouter_embeddings.py
 
 The migration checks that pgvector is already installed and upgrades the search-owned schema transactionally. The runtime database user needs access to the `search` schema and tables. It does not need permission to install extensions. Search binds to loopback by default. Give the library `SEARCH_TOKEN` as its service credential; never expose it to the browser.
 
+Schema version 3 associates each vector with a registered profile and enforces its dimension with a database constraint. Stop Search and Library workers and take the coordinated backup before applying the migration on a deployed instance. The migration rewrites the existing embeddings column and checks the profile/dimension pairs. Schema version 3 lets a staged rebuild use a different dimension. Search remains in maintenance until the library activates the new profile. See the [library maintenance commands](../library/README.md#backfill-and-rebuild-search).
+
+For the configured Qwen3 Embedding 8B tokenizer, run `uv run --locked python scripts/install_tokenizer.py` and set `SEARCH_EMBEDDING_TOKENIZER_PATH=tokenizer/qwen3-embedding-8b/tokenizer.json`. The installer pins the upstream revision and verifies the SHA-256 digest. Run it with `--verify` to check an existing local artifact without downloading. The provider's token and batching limits still require endpoint verification. [Pinned tokenizer](https://huggingface.co/Qwen/Qwen3-Embedding-8B/blob/4e423935c619ae4df87b646a3ce949610c66241c/tokenizer.json) · [Apache-2.0 license](https://huggingface.co/Qwen/Qwen3-Embedding-8B/blob/main/LICENSE).
+
 ## Verify
 
 ```powershell
@@ -75,6 +79,17 @@ Use a disposable search database for migration, restart, deletion, and concurren
 PostgreSQL stores immutable job snapshots, generated `simple` text vectors, exact pgvector embeddings, active revisions, and permanent deletion fences. Snapshots and segments contain sensitive slide and speaker-note text. Keep the search database private and back it up with the library metadata and originals under a coordinated stopped-service procedure. Restore the library's newest deletion fences before reopening queries. Search vectors can be rebuilt from current manifests, but a restored database must not be exposed until fence replay is complete.
 
 Back up the search database with `pg_dump --format=custom --file=search.dump <database>` after stopping the library and search workers. Restore into a separate database with `pg_restore --dbname=<database> search.dump`, confirm the `vector` extension and schema version, then replay newer library deletion identities before connecting clients. Retain database WAL and backups under the site's separate retention policy.
+
+## Synthetic workflow and relevance checks
+
+From `services/search`, load protected connection settings through the service environment.
+
+```sh
+uv run --locked python scripts/check_search_workflow.py --base-url http://127.0.0.1:8502 --real-endpoint
+uv run --locked python scripts/evaluate_search.py --held-out --real-endpoint --compare-paths
+```
+
+The workflow creates synthetic index jobs and deletes their deck IDs after the check. Use `--capacity` only on a development stack provisioned for 100 decks and 2,000 slides. The evaluator scores 30 labelled English, Spanish, and Simplified Chinese queries. Its path comparison uses a read-only database connection scoped to the synthetic decks and reuses each comparison vector for vector-only and fused ranking. Both commands support `--self-check`. Set `--real-endpoint` to authorize sending these synthetic fixtures to a configured cloud embedding endpoint.
 
 ## Limits
 

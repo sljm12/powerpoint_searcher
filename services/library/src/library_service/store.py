@@ -5,17 +5,17 @@ import os
 import sys
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, cast
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5
 
 from pydantic import StrictBool, model_validator
 
 from .models import (Accepted, Deck, DeckState, DeletionStatus, ErrorDetail, Job, Manifest,
-                     Operation, Record, SearchStatus, ServiceError)
+                     Operation, Record, SearchReindex, SearchStatus, ServiceError)
 from .metadata import Metadata
 
 
@@ -408,14 +408,7 @@ class Store:
             deck, operation = current
             deck.manifest, deck.state, deck.updated_at = manifest, "extracted", now()
             if search_configured and search_payload is not None and search_key is not None:
-                deck.search_index_revision = deck.next_search_index_revision(work.operation.source_revision)
-                search_payload["index_revision"] = deck.search_index_revision
-                deck.search = SearchStatus(state="queued", index_revision=deck.search_index_revision,
-                                           source_revision=work.operation.source_revision,
-                                           generation_id=manifest.generation_id)
-                deck.search_payload, deck.search_key = search_payload, f"{search_key}-{deck.search_index_revision}"
-                deck.search_retry_key, deck.search_retry_request_key = None, None
-                deck.search_due, deck.search_attempts = time.time(), 0
+                self._queue_search(deck, manifest, search_payload, search_key)
             else:
                 deck.search = SearchStatus(state="not_configured", index_revision=0,
                                            source_revision=work.operation.source_revision)
@@ -425,6 +418,142 @@ class Store:
             operation.stage, operation.error, operation.warnings = "extracted", None, manifest.warnings
             self._save_operation(operation)
             self._save_deck(deck)
+
+    @staticmethod
+    def _queue_search(deck: StoredDeck, manifest: Manifest, payload: dict[str, object], key: str) -> None:
+        deck.search_index_revision = deck.next_search_index_revision(manifest.source_revision)
+        payload["index_revision"] = deck.search_index_revision
+        deck.search = SearchStatus(state="queued", index_revision=deck.search_index_revision,
+                                   source_revision=manifest.source_revision,
+                                   generation_id=manifest.generation_id)
+        deck.search_payload, deck.search_key = payload, f"{key}-{deck.search_index_revision}"
+        deck.search_retry_key, deck.search_retry_request_key = None, None
+        deck.search_due, deck.search_attempts = time.time(), 0
+
+    def next_search_backfill(self) -> Manifest | None:
+        with self.lock:
+            assert self.metadata is not None
+            for raw in self.metadata.deck_records():
+                deck = StoredDeck.model_validate_json(raw)
+                if (deck.deleted_at is None and deck.manifest is not None
+                        and (deck.search is None or deck.search.state == "not_configured")):
+                    return deck.manifest
+        return None
+
+    def enqueue_search_backfill(self, manifest: Manifest, payload: dict[str, object]) -> bool:
+        with self.transaction():
+            deck = self._deck(manifest.deck_id, allow_deleted=True)
+            if (deck.deleted_at is not None or deck.manifest != manifest
+                    or (deck.search is not None and deck.search.state != "not_configured")):
+                return False
+            self._queue_search(deck, manifest, payload, f"backfill-{deck.deck_id}")
+            self._save_deck(deck)
+            return True
+
+    def search_reindex(self, identifier: UUID) -> SearchReindex:
+        with self.lock:
+            try:
+                return SearchReindex.model_validate_json(
+                    (self.root / "search-reindex" / f"{identifier}.json").read_bytes()
+                )
+            except FileNotFoundError:
+                raise ServiceError(404, "reindex_not_found", "Search rebuild was not found.") from None
+
+    def current_search_reindex(self) -> SearchReindex | None:
+        with self.lock:
+            for path in (self.root / "search-reindex").glob("*.json"):
+                operation = SearchReindex.model_validate_json(path.read_bytes())
+                if operation.state != "complete":
+                    return operation
+        return None
+
+    def _save_search_reindex(self, operation: SearchReindex) -> None:
+        directory = self.root / "search-reindex"
+        directory.mkdir(exist_ok=True)
+        destination = directory / f"{operation.operation_id}.json"
+        temporary = destination.with_suffix(".tmp")
+        with temporary.open("wb") as stream:
+            stream.write(operation.model_dump_json().encode())
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, destination)
+
+    def start_search_reindex(self, key: str, profile_id: str) -> SearchReindex:
+        with self.lock:
+            assert self.metadata is not None
+            identifier = uuid5(self.metadata.library_id, f"search-reindex:{key}")
+            if (self.root / "search-reindex" / f"{identifier}.json").is_file():
+                operation = self.search_reindex(identifier)
+                if operation.profile_id != profile_id:
+                    raise ServiceError(409, "reindex_conflict", "That key identifies a different search profile rebuild.")
+                return operation
+            if self.current_search_reindex() is not None:
+                raise ServiceError(409, "reindex_in_progress", "A search profile rebuild is already in progress.")
+            operation = SearchReindex(operation_id=identifier, profile_id=profile_id)
+            self._save_search_reindex(operation)
+            return operation
+
+    def update_search_reindex(self, identifier: UUID, state: Literal["queued", "building", "complete"],
+                              error: ErrorDetail | None = None) -> None:
+        with self.lock:
+            current = self.search_reindex(identifier)
+            if current.state != "complete" and (current.state != state or current.error != error):
+                self._save_search_reindex(current.model_copy(update={"state": state, "error": error}))
+
+    def exclude_search_reindex_deck(self, identifier: UUID, deck_id: UUID) -> SearchReindex:
+        with self.lock:
+            operation = self.search_reindex(identifier)
+            if operation.state == "complete" and deck_id in operation.excluded:
+                return operation
+            deck = self._deck(deck_id)
+            status = deck.search
+            if (operation.state != "building" or status is None or status.state != "failed"
+                    or status.profile_id != operation.profile_id):
+                raise ServiceError(409, "reindex_exclusion_conflict", "Only a failed rebuild job can be excluded.")
+            if operation.excluded.get(deck_id) == status.index_revision:
+                return operation
+            operation.excluded[deck_id] = status.index_revision
+            self._save_search_reindex(operation)
+            return operation
+
+    def search_reindex_cohort(self, operation: SearchReindex, build_payload: Callable[[Manifest], dict[str, object]]
+                              ) -> tuple[dict[UUID, int], dict[UUID, int]] | None:
+        with self.transaction():
+            assert self.metadata is not None
+            ready: dict[UUID, int] = {}
+            excluded: dict[UUID, int] = {}
+            incomplete = False
+            for raw in self.metadata.deck_records():
+                deck = StoredDeck.model_validate_json(raw)
+                if deck.search_delete_pending:
+                    incomplete = True
+                manifest = deck.manifest
+                if manifest is None or deck.deleted_at is not None:
+                    continue
+                status = deck.search
+                if (status is None or status.generation_id != manifest.generation_id
+                        or status.profile_id != operation.profile_id):
+                    payload = build_payload(manifest)
+                    payload["profile_id"] = operation.profile_id
+                    self._queue_search(deck, manifest, payload, f"reindex-{operation.operation_id}-{deck.deck_id}")
+                    assert deck.search is not None
+                    deck.search.profile_id = operation.profile_id
+                    self._save_deck(deck)
+                    return None
+                if status.state == "ready":
+                    ready[deck.deck_id] = status.index_revision
+                elif status.state == "failed" and operation.excluded.get(deck.deck_id) == status.index_revision:
+                    excluded[deck.deck_id] = status.index_revision
+                else:
+                    incomplete = True
+            return None if incomplete else (ready, excluded)
+
+    def complete_search_reindex(self, identifier: UUID, cohort: tuple[dict[UUID, int], dict[UUID, int]],
+                                build_payload: Callable[[Manifest], dict[str, object]]) -> None:
+        with self.lock:
+            latest = self.search_reindex(identifier)
+            if latest.state == "building" and self.search_reindex_cohort(latest, build_payload) == cohort:
+                self.update_search_reindex(identifier, "complete")
 
     def search_work(self) -> tuple[UUID, dict[str, object] | None, str | None, SearchStatus, str | None, int] | None:
         with self.lock:
@@ -446,7 +575,7 @@ class Store:
 
     def search_submitted(self, deck_id: UUID, status: SearchStatus, *, expected_status: SearchStatus,
                          expected_key: str | None, expected_retry_key: str | None,
-                         retry_after: float = 0) -> bool:
+                         retry_after: float = 0, acknowledge_retry: bool = False) -> bool:
         with self.transaction():
             deck = self._deck(deck_id, allow_deleted=True)
             if (deck.search != expected_status or deck.search_key != expected_key
@@ -457,7 +586,7 @@ class Store:
             if status.job_id is not None or (status.state == "failed" and status.error is not None
                                              and not status.error.retryable):
                 deck.search_payload = None
-            if status.job_id is not None:
+            if acknowledge_retry:
                 deck.search_retry_key = None
             deck.search_due = time.time() + retry_after
             self._save_deck(deck)

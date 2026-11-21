@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 import hmac
 import json
+import time
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 from fastapi import FastAPI, Header, Query, Request
@@ -15,7 +16,8 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from tokenizers import Tokenizer
 
 from .embeddings import Embeddings
-from .models import DeleteResponse, IndexRequest, JobAccepted, JobStatus, Record, SearchRequest, SearchResponse
+from .models import (DeleteResponse, IndexRequest, JobAccepted, JobStatus, Record, ReindexActivation,
+                     ReindexRequest, ReindexStatus, SearchRequest, SearchResponse)
 from .service import Search
 from .settings import Settings
 from .store import SearchError, SearchStore
@@ -101,6 +103,8 @@ def create_app(settings: Settings, transport: httpx.AsyncBaseTransport | None = 
         nonlocal embeddings, service, worker, unavailable
         try:
             store.open()
+        except SearchError as error:
+            unavailable = error.code
         except Exception:
             unavailable = "database_unavailable"
         if settings.embedding_url and settings.embedding_model and settings.embedding_revision and settings.tokenizer_path.is_file():
@@ -108,7 +112,7 @@ def create_app(settings: Settings, transport: httpx.AsyncBaseTransport | None = 
                 tokenizer = Tokenizer.from_file(str(settings.tokenizer_path))
                 embeddings = Embeddings(settings, transport)
                 service = Search(settings, store, embeddings, tokenizer)
-                if unavailable != "database_unavailable":
+                if store.db is not None:
                     await asyncio.to_thread(store.register_profile, service.profile_id,
                                             service.profile_configuration)
                     unavailable = ""
@@ -164,8 +168,10 @@ def create_app(settings: Settings, transport: httpx.AsyncBaseTransport | None = 
     async def policy(authorization: str | None = Header(default=None)) -> dict[str, Any]:
         require_token(authorization)
         search = ready()
-        return {"library_id": await asyncio.to_thread(store.library_id),
+        library_id, active_profile, maintenance = await asyncio.to_thread(store.profile_state)
+        return {"library_id": library_id,
                 "profile_id": search.profile_id, "model": settings.embedding_model,
+                "maintenance": maintenance or active_profile not in (None, search.profile_id),
                 "location": settings.embedding_location,
                 "disclosure": "Native slide text, included speaker notes, and query text are sent to the configured embedding service. Images and original decks are not sent."}
 
@@ -198,7 +204,41 @@ def create_app(settings: Settings, transport: httpx.AsyncBaseTransport | None = 
     @app.post("/v1/search", response_model=SearchResponse)
     async def search_route(request: SearchRequest, authorization: str | None = Header(default=None)) -> SearchResponse:
         require_token(authorization)
-        return await ready().query(request)
+        search = ready()
+        deadline = time.monotonic() + settings.query_timeout
+        try:
+            library_id, active_profile, maintenance = await asyncio.wait_for(
+                asyncio.to_thread(store.profile_state, deadline=deadline),
+                timeout=max(0, deadline - time.monotonic()),
+            )
+        except TimeoutError:
+            raise SearchError(504, "search_timeout", "Search exceeded its configured response deadline. Try again.", True) from None
+        if maintenance or active_profile not in (None, search.profile_id):
+            raise SearchError(503, "reindex_required", "Search is paused for profile maintenance.", True)
+        if library_id not in (None, request.library_id):
+            raise SearchError(409, "library_conflict", "This search database is bound to another library.")
+        if request.profile_id != search.profile_id:
+            raise SearchError(409, "profile_conflict", "Search request does not match active profile.")
+        if active_profile is None:
+            coverage = dict.fromkeys(("eligible_slides", "searchable_slides", "blank_slides", "hidden_slides"), 0)
+            return SearchResponse(query_id=uuid4(), profile_id=search.profile_id, mode="hybrid",
+                                  degraded=False, warnings=[], coverage=coverage, decks=[])
+        return await search.query(request, deadline=deadline)
+
+    @app.post("/v1/reindex/begin", response_model=ReindexStatus)
+    async def begin_reindex(request: ReindexRequest, authorization: str | None = Header(default=None)) -> ReindexStatus:
+        require_token(authorization)
+        if request.profile_id != ready().profile_id:
+            raise SearchError(409, "profile_conflict", "Rebuild does not match the configured search profile.")
+        return await asyncio.to_thread(store.begin_reindex, request)
+
+    @app.post("/v1/reindex/activate", response_model=ReindexStatus)
+    async def activate_reindex(request: ReindexActivation,
+                               authorization: str | None = Header(default=None)) -> ReindexStatus:
+        require_token(authorization)
+        if request.profile_id != ready().profile_id:
+            raise SearchError(409, "profile_conflict", "Rebuild does not match the configured search profile.")
+        return await asyncio.to_thread(store.activate_reindex, request)
 
     @app.delete("/v1/decks/{deck_id}", response_model=DeleteResponse)
     async def delete(deck_id: UUID, library_id: UUID = Query(), authorization: str | None = Header(default=None)) -> DeleteResponse:
